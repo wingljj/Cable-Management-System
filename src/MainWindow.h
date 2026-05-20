@@ -70,6 +70,7 @@ private:
     QWidget *buildStatsTab();
 
     void setupTable(QTableView *table);
+    void setupStretchTable(QTableView *table);
     void showError(const QString &message);
     int selectedId(QTableView *table) const;
     void replaceModel(QPointer<QSqlQueryModel> &target, QSqlQueryModel *model, QTableView *table);

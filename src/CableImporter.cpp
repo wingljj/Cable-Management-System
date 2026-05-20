@@ -6,6 +6,8 @@
 #include <QTextStream>
 #include <QXmlStreamReader>
 
+#include <QAxObject>
+#include <QDir>
 #include <QtGui/private/qzipreader_p.h>
 
 namespace {
@@ -286,6 +288,86 @@ QList<CableImportRow> readXlsx(const QString &path, QString *errorMessage)
     return rows;
 }
 
+bool hasOleCompoundHeader(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    return file.read(8).toHex().toLower() == QByteArrayLiteral("d0cf11e0a1b11ae1");
+}
+
+QList<QString> excelRowValues(QAxObject *sheet, int row, int columnCount)
+{
+    QList<QString> values;
+    for (int column = 1; column <= columnCount; ++column) {
+        QScopedPointer<QAxObject> cell(sheet->querySubObject("Cells(int,int)", row, column));
+        values.append(cell ? cell->property("Value").toString().trimmed() : QString());
+    }
+    return values;
+}
+
+QList<CableImportRow> readXls(const QString &path, QString *errorMessage)
+{
+    if (!hasOleCompoundHeader(path)) {
+        setError(errorMessage, QStringLiteral("无法读取 XLS 文件：文件不是有效的 Excel 97-2003 格式。"));
+        return {};
+    }
+
+    QAxObject excel(QStringLiteral("Excel.Application"));
+    if (excel.isNull()) {
+        setError(errorMessage, QStringLiteral("无法读取 XLS 文件：请确认本机已安装 Microsoft Excel。"));
+        return {};
+    }
+
+    excel.setProperty("Visible", false);
+    excel.setProperty("DisplayAlerts", false);
+
+    QScopedPointer<QAxObject> workbooks(excel.querySubObject("Workbooks"));
+    QScopedPointer<QAxObject> workbook(workbooks ? workbooks->querySubObject("Open(const QString&)", QDir::toNativeSeparators(path)) : nullptr);
+    if (!workbook) {
+        excel.dynamicCall("Quit()");
+        setError(errorMessage, QStringLiteral("无法打开 XLS 文件。"));
+        return {};
+    }
+
+    QScopedPointer<QAxObject> sheet(workbook->querySubObject("Worksheets(int)", 1));
+    QScopedPointer<QAxObject> usedRange(sheet ? sheet->querySubObject("UsedRange") : nullptr);
+    QScopedPointer<QAxObject> rowsObject(usedRange ? usedRange->querySubObject("Rows") : nullptr);
+    QScopedPointer<QAxObject> columnsObject(usedRange ? usedRange->querySubObject("Columns") : nullptr);
+    const int rowCount = rowsObject ? rowsObject->property("Count").toInt() : 0;
+    const int columnCount = columnsObject ? columnsObject->property("Count").toInt() : 0;
+
+    if (rowCount <= 0 || columnCount <= 0) {
+        workbook->dynamicCall("Close(Boolean)", false);
+        excel.dynamicCall("Quit()");
+        return {};
+    }
+
+    const QList<QString> headers = excelRowValues(sheet.data(), 1, columnCount);
+    const int codeIndex = headerIndex(headers, QStringLiteral("编号"));
+    const int startIndex = headerIndex(headers, QStringLiteral("始端"));
+    const int endIndex = headerIndex(headers, QStringLiteral("终端"));
+    if (codeIndex < 0 || startIndex < 0 || endIndex < 0) {
+        workbook->dynamicCall("Close(Boolean)", false);
+        excel.dynamicCall("Quit()");
+        setError(errorMessage, QStringLiteral("导入文件必须包含表头：编号、始端、终端。"));
+        return {};
+    }
+
+    QList<CableImportRow> result;
+    for (int row = 2; row <= rowCount; ++row) {
+        CableImportRow record = rowFromCells(excelRowValues(sheet.data(), row, columnCount), codeIndex, startIndex, endIndex);
+        if (!record.code.isEmpty()) {
+            result.append(record);
+        }
+    }
+
+    workbook->dynamicCall("Close(Boolean)", false);
+    excel.dynamicCall("Quit()");
+    return result;
+}
+
 } // namespace
 
 QList<CableImportRow> CableImporter::readFile(const QString &path, QString *errorMessage)
@@ -301,7 +383,10 @@ QList<CableImportRow> CableImporter::readFile(const QString &path, QString *erro
     if (suffix == QStringLiteral("xlsx")) {
         return readXlsx(path, errorMessage);
     }
+    if (suffix == QStringLiteral("xls")) {
+        return readXls(path, errorMessage);
+    }
 
-    setError(errorMessage, QStringLiteral("仅支持 .xlsx 和 .csv 文件。"));
+    setError(errorMessage, QStringLiteral("仅支持 .xlsx、.xls 和 .csv 文件。"));
     return {};
 }

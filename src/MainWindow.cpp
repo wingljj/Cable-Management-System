@@ -340,7 +340,7 @@ QWidget *MainWindow::buildCableTab()
     filterLayout->setColumnStretch(1, 2);
 
     m_cableTable = new QTableView(ledgerBox);
-    setupTable(m_cableTable);
+    setupStretchTable(m_cableTable);
     m_cableTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ledgerLayout->addLayout(filterLayout);
     ledgerLayout->addWidget(m_cableTable);
@@ -363,7 +363,7 @@ QWidget *MainWindow::buildCableTab()
     recordFilterLayout->setColumnStretch(1, 1);
 
     m_cableBorrowTable = new QTableView(recordBox);
-    setupTable(m_cableBorrowTable);
+    setupStretchTable(m_cableBorrowTable);
     recordLayout->addLayout(recordFilterLayout);
     recordLayout->addWidget(m_cableBorrowTable);
     left->addWidget(recordBox, 1);
@@ -495,6 +495,12 @@ void MainWindow::setupTable(QTableView *table)
     table->setSortingEnabled(false);
 }
 
+void MainWindow::setupStretchTable(QTableView *table)
+{
+    setupTable(table);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+}
+
 void MainWindow::refreshAll()
 {
     populateFilters();
@@ -541,6 +547,7 @@ void MainWindow::refreshCables()
                  m_db.createCableModel(m_cableKeyword->text(), m_cableStatusFilter->currentText(), this),
                  m_cableTable);
     m_cableTable->hideColumn(0);
+    m_cableTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 }
 
 void MainWindow::refreshCableBorrows()
@@ -551,6 +558,7 @@ void MainWindow::refreshCableBorrows()
                                              this),
                  m_cableBorrowTable);
     m_cableBorrowTable->hideColumn(0);
+    m_cableBorrowTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 }
 
 void MainWindow::refreshStats()
@@ -729,7 +737,7 @@ void MainWindow::importCables()
     const QString path = QFileDialog::getOpenFileName(this,
                                                       QStringLiteral("导入电缆台账"),
                                                       QString(),
-                                                      QStringLiteral("Excel/CSV (*.xlsx *.csv)"));
+                                                      QStringLiteral("Excel/CSV (*.xlsx *.xls *.csv)"));
     if (path.isEmpty()) {
         return;
     }

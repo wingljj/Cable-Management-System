@@ -18,6 +18,7 @@ class CableModuleTests : public QObject
 private slots:
     void parsesCsvCableLedger();
     void parsesXlsxCableLedger();
+    void acceptsXlsCableLedgerExtension();
     void importsCableRowsWithUpsert();
     void borrowsAndReturnsCableBatch();
 };
@@ -94,6 +95,24 @@ void CableModuleTests::parsesXlsxCableLedger()
     QCOMPARE(rows.at(0).code, QStringLiteral("DL-101"));
     QCOMPARE(rows.at(0).startPoint, QStringLiteral("一号柜"));
     QCOMPARE(rows.at(0).endPoint, QStringLiteral("二号柜"));
+}
+
+void CableModuleTests::acceptsXlsCableLedgerExtension()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("cables.xls"));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("not a real xls file");
+    file.close();
+
+    QString error;
+    const QList<CableImportRow> rows = CableImporter::readFile(path, &error);
+
+    QVERIFY(rows.isEmpty());
+    QVERIFY(!error.contains(QStringLiteral("仅支持 .xlsx 和 .csv 文件")));
 }
 
 void CableModuleTests::importsCableRowsWithUpsert()
