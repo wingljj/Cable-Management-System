@@ -43,7 +43,9 @@ DatabaseManager::~DatabaseManager()
 
 bool DatabaseManager::open()
 {
-    const QString connectionName = QStringLiteral("dapm_connection");
+    const QString connectionName = m_databasePath.isEmpty()
+                                       ? QStringLiteral("dapm_connection")
+                                       : QStringLiteral("dapm_connection_%1").arg(QString::number(reinterpret_cast<quintptr>(this)));
     if (QSqlDatabase::contains(connectionName)) {
         m_db = QSqlDatabase::database(connectionName);
     } else {
@@ -69,6 +71,11 @@ bool DatabaseManager::open()
 QString DatabaseManager::lastError() const
 {
     return m_lastError;
+}
+
+void DatabaseManager::setDatabasePath(const QString &path)
+{
+    m_databasePath = path;
 }
 
 QStringList DatabaseManager::equipmentStatuses() const
@@ -575,6 +582,290 @@ QList<QVariantMap> DatabaseManager::overdueBorrows() const
     return result;
 }
 
+QStringList DatabaseManager::cableStatuses() const
+{
+    return {QStringLiteral("在库"), QStringLiteral("借出")};
+}
+
+QStringList DatabaseManager::cableBorrowStatuses() const
+{
+    return {QStringLiteral("借出中"), QStringLiteral("已归还")};
+}
+
+bool DatabaseManager::importCables(const QList<CableImportRow> &rows, CableImportSummary *summary)
+{
+    CableImportSummary localSummary;
+    if (!m_db.transaction()) {
+        setLastError(QStringLiteral("开启电缆导入事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    for (const CableImportRow &row : rows) {
+        const QString code = row.code.trimmed();
+        if (code.isEmpty()) {
+            ++localSummary.skipped;
+            continue;
+        }
+
+        QSqlQuery existing(m_db);
+        existing.prepare(QStringLiteral("SELECT id FROM cables WHERE code=:code"));
+        existing.bindValue(QStringLiteral(":code"), code);
+        if (!existing.exec()) {
+            m_db.rollback();
+            setLastError(QStringLiteral("检查电缆编号失败：%1").arg(existing.lastError().text()));
+            return false;
+        }
+
+        QSqlQuery query(m_db);
+        if (existing.next()) {
+            query.prepare(QStringLiteral(
+                "UPDATE cables SET start_point=:start_point, end_point=:end_point WHERE code=:code"));
+            ++localSummary.updated;
+        } else {
+            query.prepare(QStringLiteral(
+                "INSERT INTO cables(code, start_point, end_point, status) "
+                "VALUES(:code, :start_point, :end_point, '在库')"));
+            ++localSummary.inserted;
+        }
+
+        query.bindValue(QStringLiteral(":code"), code);
+        query.bindValue(QStringLiteral(":start_point"), row.startPoint.trimmed());
+        query.bindValue(QStringLiteral(":end_point"), row.endPoint.trimmed());
+        if (!query.exec()) {
+            m_db.rollback();
+            setLastError(QStringLiteral("导入电缆失败：%1").arg(query.lastError().text()));
+            return false;
+        }
+    }
+
+    if (!m_db.commit()) {
+        setLastError(QStringLiteral("提交电缆导入事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    if (summary) {
+        *summary = localSummary;
+    }
+    emit dataChanged();
+    return true;
+}
+
+QSqlQueryModel *DatabaseManager::createCableModel(const QString &keyword, const QString &status, QObject *parent) const
+{
+    auto *model = new QSqlQueryModel(parent);
+    QString sql = QStringLiteral(
+        "SELECT id AS 'ID', code AS '编号', start_point AS '始端', end_point AS '终端', status AS '状态' "
+        "FROM cables WHERE 1=1");
+
+    if (!keyword.trimmed().isEmpty()) {
+        sql += QStringLiteral(" AND (code LIKE :keyword OR start_point LIKE :keyword OR end_point LIKE :keyword)");
+    }
+    if (!status.isEmpty() && status != QStringLiteral("全部")) {
+        sql += QStringLiteral(" AND status=:status");
+    }
+    sql += QStringLiteral(" ORDER BY code");
+
+    QSqlQuery query(m_db);
+    query.prepare(sql);
+    if (!keyword.trimmed().isEmpty()) {
+        query.bindValue(QStringLiteral(":keyword"), QStringLiteral("%%1%").arg(keyword.trimmed()));
+    }
+    if (!status.isEmpty() && status != QStringLiteral("全部")) {
+        query.bindValue(QStringLiteral(":status"), status);
+    }
+    query.exec();
+    model->setQuery(query);
+    return model;
+}
+
+QSqlQueryModel *DatabaseManager::createCableBorrowModel(const QString &keyword,
+                                                        const QString &status,
+                                                        QObject *parent) const
+{
+    auto *model = new QSqlQueryModel(parent);
+    QString sql = QStringLiteral(
+        "SELECT b.id AS 'ID', c.code AS '电缆编号', c.start_point AS '始端', c.end_point AS '终端', "
+        "b.borrower AS '借用人', b.department AS '部门', b.borrow_date AS '借出日期', "
+        "b.expected_return_date AS '预计归还', b.actual_return_date AS '实际归还', "
+        "b.status AS '状态', b.remark AS '备注' "
+        "FROM cable_borrow_records b JOIN cables c ON c.id=b.cable_id WHERE 1=1");
+
+    if (!keyword.trimmed().isEmpty()) {
+        sql += QStringLiteral(" AND (c.code LIKE :keyword OR c.start_point LIKE :keyword OR c.end_point LIKE :keyword "
+                              "OR b.borrower LIKE :keyword OR b.department LIKE :keyword)");
+    }
+    if (!status.isEmpty() && status != QStringLiteral("全部")) {
+        sql += QStringLiteral(" AND b.status=:status");
+    }
+    sql += QStringLiteral(" ORDER BY b.status ASC, b.borrow_date DESC, b.id DESC");
+
+    QSqlQuery query(m_db);
+    query.prepare(sql);
+    if (!keyword.trimmed().isEmpty()) {
+        query.bindValue(QStringLiteral(":keyword"), QStringLiteral("%%1%").arg(keyword.trimmed()));
+    }
+    if (!status.isEmpty() && status != QStringLiteral("全部")) {
+        query.bindValue(QStringLiteral(":status"), status);
+    }
+    query.exec();
+    model->setQuery(query);
+    return model;
+}
+
+CableRecord DatabaseManager::cable(int id) const
+{
+    CableRecord record;
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("SELECT id, code, start_point, end_point, status FROM cables WHERE id=:id"));
+    query.bindValue(QStringLiteral(":id"), id);
+    if (!query.exec() || !query.next()) {
+        return record;
+    }
+
+    record.id = query.value(0).toInt();
+    record.code = query.value(1).toString();
+    record.startPoint = query.value(2).toString();
+    record.endPoint = query.value(3).toString();
+    record.status = query.value(4).toString();
+    return record;
+}
+
+CableRecord DatabaseManager::cableByCode(const QString &code) const
+{
+    CableRecord record;
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("SELECT id, code, start_point, end_point, status FROM cables WHERE code=:code"));
+    query.bindValue(QStringLiteral(":code"), code.trimmed());
+    if (!query.exec() || !query.next()) {
+        return record;
+    }
+
+    record.id = query.value(0).toInt();
+    record.code = query.value(1).toString();
+    record.startPoint = query.value(2).toString();
+    record.endPoint = query.value(3).toString();
+    record.status = query.value(4).toString();
+    return record;
+}
+
+int DatabaseManager::cableIdByCode(const QString &code) const
+{
+    return cableByCode(code).id;
+}
+
+QString DatabaseManager::cableStatus(int cableId) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("SELECT status FROM cables WHERE id=:id"));
+    query.bindValue(QStringLiteral(":id"), cableId);
+    if (query.exec() && query.next()) {
+        return query.value(0).toString();
+    }
+    return QString();
+}
+
+bool DatabaseManager::borrowCables(const QList<int> &cableIds, const CableBorrowRecord &record)
+{
+    if (cableIds.isEmpty()) {
+        setLastError(QStringLiteral("请先将电缆加入缓存栏。"));
+        return false;
+    }
+    if (record.borrower.trimmed().isEmpty()) {
+        setLastError(QStringLiteral("请填写借用人。"));
+        return false;
+    }
+
+    if (!m_db.transaction()) {
+        setLastError(QStringLiteral("开启电缆借出事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    for (int cableId : cableIds) {
+        const QString status = cableStatus(cableId);
+        if (status != QStringLiteral("在库")) {
+            m_db.rollback();
+            setLastError(QStringLiteral("只有“在库”的电缆可以借出。当前状态：%1").arg(status));
+            return false;
+        }
+
+        QSqlQuery query(m_db);
+        query.prepare(QStringLiteral(
+            "INSERT INTO cable_borrow_records(cable_id, borrower, department, borrow_date, expected_return_date, status, remark) "
+            "VALUES(:cable_id, :borrower, :department, :borrow_date, :expected_return_date, '借出中', :remark)"));
+        query.bindValue(QStringLiteral(":cable_id"), cableId);
+        query.bindValue(QStringLiteral(":borrower"), record.borrower.trimmed());
+        query.bindValue(QStringLiteral(":department"), record.department.trimmed());
+        bindDate(query, QStringLiteral(":borrow_date"), record.borrowDate);
+        bindDate(query, QStringLiteral(":expected_return_date"), record.expectedReturnDate);
+        query.bindValue(QStringLiteral(":remark"), record.remark.trimmed());
+
+        if (!query.exec() || !updateCableStatus(cableId, QStringLiteral("借出"))) {
+            m_db.rollback();
+            setLastError(QStringLiteral("登记电缆借出失败：%1").arg(query.lastError().text()));
+            return false;
+        }
+    }
+
+    if (!m_db.commit()) {
+        setLastError(QStringLiteral("提交电缆借出事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    emit dataChanged();
+    return true;
+}
+
+bool DatabaseManager::returnCables(const QList<int> &cableIds, const QDate &actualDate, const QString &remark)
+{
+    if (cableIds.isEmpty()) {
+        setLastError(QStringLiteral("请先将电缆加入缓存栏。"));
+        return false;
+    }
+
+    if (!m_db.transaction()) {
+        setLastError(QStringLiteral("开启电缆归还事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    for (int cableId : cableIds) {
+        const QString status = cableStatus(cableId);
+        if (status != QStringLiteral("借出")) {
+            m_db.rollback();
+            setLastError(QStringLiteral("只有“借出”的电缆可以归还。当前状态：%1").arg(status));
+            return false;
+        }
+
+        const int borrowId = openCableBorrowRecordId(cableId);
+        if (borrowId <= 0) {
+            m_db.rollback();
+            setLastError(QStringLiteral("未找到电缆的未归还记录。"));
+            return false;
+        }
+
+        QSqlQuery query(m_db);
+        query.prepare(QStringLiteral(
+            "UPDATE cable_borrow_records SET actual_return_date=:actual_return_date, status='已归还', "
+            "remark=CASE WHEN :remark='' THEN remark ELSE :remark END WHERE id=:id"));
+        bindDate(query, QStringLiteral(":actual_return_date"), actualDate);
+        query.bindValue(QStringLiteral(":remark"), remark.trimmed());
+        query.bindValue(QStringLiteral(":id"), borrowId);
+
+        if (!query.exec() || !updateCableStatus(cableId, QStringLiteral("在库"))) {
+            m_db.rollback();
+            setLastError(QStringLiteral("登记电缆归还失败：%1").arg(query.lastError().text()));
+            return false;
+        }
+    }
+
+    if (!m_db.commit()) {
+        setLastError(QStringLiteral("提交电缆归还事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    emit dataChanged();
+    return true;
+}
+
 bool DatabaseManager::ensureSchema()
 {
     const QStringList statements = {
@@ -614,9 +905,31 @@ bool DatabaseManager::ensureSchema()
             "finished_date TEXT,"
             "solution TEXT,"
             "FOREIGN KEY(equipment_id) REFERENCES equipment(id) ON DELETE CASCADE)"),
+        QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS cables ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "code TEXT NOT NULL UNIQUE,"
+            "start_point TEXT NOT NULL,"
+            "end_point TEXT NOT NULL,"
+            "status TEXT NOT NULL DEFAULT '在库')"),
+        QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS cable_borrow_records ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "cable_id INTEGER NOT NULL,"
+            "borrower TEXT NOT NULL,"
+            "department TEXT,"
+            "borrow_date TEXT NOT NULL,"
+            "expected_return_date TEXT,"
+            "actual_return_date TEXT,"
+            "status TEXT NOT NULL DEFAULT '借出中',"
+            "remark TEXT,"
+            "FOREIGN KEY(cable_id) REFERENCES cables(id) ON DELETE CASCADE)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_equipment_code ON equipment(code)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_borrow_equipment ON borrow_records(equipment_id)"),
-        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_repair_equipment ON repair_records(equipment_id)")
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_repair_equipment ON repair_records(equipment_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_cables_code ON cables(code)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_cables_status ON cables(status)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_cable_borrow_cable ON cable_borrow_records(cable_id)")
     };
 
     for (const QString &sql : statements) {
@@ -701,6 +1014,9 @@ void DatabaseManager::setLastError(const QString &message) const
 
 QString DatabaseManager::dbPath() const
 {
+    if (!m_databasePath.isEmpty()) {
+        return m_databasePath;
+    }
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data/equipment.db"));
 }
 
@@ -726,4 +1042,30 @@ bool DatabaseManager::updateEquipmentStatus(int equipmentId, const QString &stat
         return false;
     }
     return true;
+}
+
+bool DatabaseManager::updateCableStatus(int cableId, const QString &status)
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("UPDATE cables SET status=:status WHERE id=:id"));
+    query.bindValue(QStringLiteral(":status"), status);
+    query.bindValue(QStringLiteral(":id"), cableId);
+    if (!query.exec()) {
+        setLastError(QStringLiteral("更新电缆状态失败：%1").arg(query.lastError().text()));
+        return false;
+    }
+    return true;
+}
+
+int DatabaseManager::openCableBorrowRecordId(int cableId) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT id FROM cable_borrow_records WHERE cable_id=:cable_id AND status='借出中' "
+        "ORDER BY borrow_date DESC, id DESC LIMIT 1"));
+    query.bindValue(QStringLiteral(":cable_id"), cableId);
+    if (query.exec() && query.next()) {
+        return query.value(0).toInt();
+    }
+    return -1;
 }

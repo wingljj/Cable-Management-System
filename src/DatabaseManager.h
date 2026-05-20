@@ -9,6 +9,8 @@
 #include <QVariant>
 #include <QVariantMap>
 
+#include "CableImporter.h"
+
 struct EquipmentRecord
 {
     int id = -1;
@@ -49,6 +51,24 @@ struct RepairRecord
     QString solution;
 };
 
+struct CableBorrowRecord
+{
+    QString borrower;
+    QString department;
+    QDate borrowDate;
+    QDate expectedReturnDate;
+    QString remark;
+};
+
+struct CableRecord
+{
+    int id = -1;
+    QString code;
+    QString startPoint;
+    QString endPoint;
+    QString status;
+};
+
 class QSqlQueryModel;
 
 class DatabaseManager : public QObject
@@ -60,6 +80,7 @@ public:
     ~DatabaseManager() override;
 
     bool open();
+    void setDatabasePath(const QString &path);
     QString lastError() const;
 
     QStringList equipmentStatuses() const;
@@ -96,6 +117,18 @@ public:
     QSqlQueryModel *createOverdueBorrowModel(QObject *parent) const;
     QList<QVariantMap> overdueBorrows() const;
 
+    bool importCables(const QList<CableImportRow> &rows, CableImportSummary *summary);
+    QSqlQueryModel *createCableModel(const QString &keyword, const QString &status, QObject *parent) const;
+    QSqlQueryModel *createCableBorrowModel(const QString &keyword, const QString &status, QObject *parent) const;
+    QStringList cableStatuses() const;
+    QStringList cableBorrowStatuses() const;
+    CableRecord cable(int id) const;
+    CableRecord cableByCode(const QString &code) const;
+    int cableIdByCode(const QString &code) const;
+    QString cableStatus(int cableId) const;
+    bool borrowCables(const QList<int> &cableIds, const CableBorrowRecord &record);
+    bool returnCables(const QList<int> &cableIds, const QDate &actualDate, const QString &remark);
+
 signals:
     void dataChanged();
 
@@ -107,7 +140,10 @@ private:
     QString dbPath() const;
     QString currentEquipmentStatus(int equipmentId) const;
     bool updateEquipmentStatus(int equipmentId, const QString &status);
+    bool updateCableStatus(int cableId, const QString &status);
+    int openCableBorrowRecordId(int cableId) const;
 
     QSqlDatabase m_db;
     mutable QString m_lastError;
+    QString m_databasePath;
 };

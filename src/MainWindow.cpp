@@ -1,20 +1,26 @@
 #include "MainWindow.h"
 
+#include "CableImporter.h"
+
 #include <QApplication>
 #include <QBoxLayout>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateEdit>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSqlQueryModel>
+#include <QStatusBar>
 #include <QTableView>
 #include <QTabWidget>
 #include <QTextEdit>
@@ -55,6 +61,7 @@ void MainWindow::buildUi()
     m_tabs->addTab(buildEquipmentTab(), QStringLiteral("设备台账"));
     m_tabs->addTab(buildBorrowTab(), QStringLiteral("借入借出"));
     m_tabs->addTab(buildRepairTab(), QStringLiteral("报修管理"));
+    m_tabs->addTab(buildCableTab(), QStringLiteral("电缆管理"));
     m_tabs->addTab(buildStatsTab(), QStringLiteral("统计分析"));
     setCentralWidget(m_tabs);
 }
@@ -296,6 +303,139 @@ QWidget *MainWindow::buildRepairTab()
     return page;
 }
 
+QWidget *MainWindow::buildCableTab()
+{
+    auto *page = new QWidget(this);
+    auto *root = new QHBoxLayout(page);
+    root->setContentsMargins(14, 14, 14, 14);
+    root->setSpacing(14);
+
+    auto *left = new QVBoxLayout();
+    auto *ledgerBox = new QGroupBox(QStringLiteral("电缆台账"));
+    auto *ledgerLayout = new QVBoxLayout(ledgerBox);
+
+    auto *filterLayout = new QGridLayout();
+    m_cableKeyword = new QLineEdit(ledgerBox);
+    m_cableKeyword->setPlaceholderText(QStringLiteral("编号 / 始端 / 终端"));
+    m_cableStatusFilter = new QComboBox(ledgerBox);
+    m_cableStatusFilter->addItem(QStringLiteral("全部"));
+    m_cableStatusFilter->addItems(m_db.cableStatuses());
+    m_clearCableSearchAfterEnter = new QCheckBox(QStringLiteral("回车后清空"), ledgerBox);
+    m_addCableSearchToCache = new QCheckBox(QStringLiteral("回车加入缓存"), ledgerBox);
+    auto *searchButton = new QPushButton(QStringLiteral("查询"), ledgerBox);
+    auto *resetButton = new QPushButton(QStringLiteral("重置"), ledgerBox);
+    auto *importButton = new QPushButton(QStringLiteral("导入 Excel/CSV"), ledgerBox);
+    auto *cacheSelectedButton = new QPushButton(QStringLiteral("加入缓存"), ledgerBox);
+
+    filterLayout->addWidget(new QLabel(QStringLiteral("关键字")), 0, 0);
+    filterLayout->addWidget(m_cableKeyword, 0, 1);
+    filterLayout->addWidget(m_clearCableSearchAfterEnter, 0, 2);
+    filterLayout->addWidget(m_addCableSearchToCache, 0, 3);
+    filterLayout->addWidget(new QLabel(QStringLiteral("状态")), 0, 4);
+    filterLayout->addWidget(m_cableStatusFilter, 0, 5);
+    filterLayout->addWidget(searchButton, 0, 6);
+    filterLayout->addWidget(resetButton, 0, 7);
+    filterLayout->addWidget(importButton, 0, 8);
+    filterLayout->addWidget(cacheSelectedButton, 0, 9);
+    filterLayout->setColumnStretch(1, 2);
+
+    m_cableTable = new QTableView(ledgerBox);
+    setupTable(m_cableTable);
+    m_cableTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    ledgerLayout->addLayout(filterLayout);
+    ledgerLayout->addWidget(m_cableTable);
+    left->addWidget(ledgerBox, 2);
+
+    auto *recordBox = new QGroupBox(QStringLiteral("电缆借还记录"));
+    auto *recordLayout = new QVBoxLayout(recordBox);
+    auto *recordFilterLayout = new QGridLayout();
+    m_cableBorrowKeyword = new QLineEdit(recordBox);
+    m_cableBorrowKeyword->setPlaceholderText(QStringLiteral("电缆 / 借用人 / 部门"));
+    m_cableBorrowStatusFilter = new QComboBox(recordBox);
+    m_cableBorrowStatusFilter->addItem(QStringLiteral("全部"));
+    m_cableBorrowStatusFilter->addItems(m_db.cableBorrowStatuses());
+    auto *recordSearchButton = new QPushButton(QStringLiteral("查询"), recordBox);
+    recordFilterLayout->addWidget(new QLabel(QStringLiteral("关键字")), 0, 0);
+    recordFilterLayout->addWidget(m_cableBorrowKeyword, 0, 1);
+    recordFilterLayout->addWidget(new QLabel(QStringLiteral("状态")), 0, 2);
+    recordFilterLayout->addWidget(m_cableBorrowStatusFilter, 0, 3);
+    recordFilterLayout->addWidget(recordSearchButton, 0, 4);
+    recordFilterLayout->setColumnStretch(1, 1);
+
+    m_cableBorrowTable = new QTableView(recordBox);
+    setupTable(m_cableBorrowTable);
+    recordLayout->addLayout(recordFilterLayout);
+    recordLayout->addWidget(m_cableBorrowTable);
+    left->addWidget(recordBox, 1);
+
+    m_cableCacheBox = new QGroupBox(QStringLiteral("缓存栏（0 根）"));
+    m_cableCacheBox->setMaximumWidth(410);
+    auto *cacheLayout = new QVBoxLayout(m_cableCacheBox);
+    m_cableCacheList = new QListWidget(m_cableCacheBox);
+    m_cableCacheList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    cacheLayout->addWidget(m_cableCacheList, 1);
+
+    auto *cacheButtons = new QHBoxLayout();
+    auto *removeCacheButton = new QPushButton(QStringLiteral("移除选中"), m_cableCacheBox);
+    auto *clearCacheButton = new QPushButton(QStringLiteral("清空缓存"), m_cableCacheBox);
+    cacheButtons->addWidget(removeCacheButton);
+    cacheButtons->addWidget(clearCacheButton);
+    cacheLayout->addLayout(cacheButtons);
+
+    auto *form = new QFormLayout();
+    form->setLabelAlignment(Qt::AlignRight);
+    m_cableBorrowerEdit = new QLineEdit(m_cableCacheBox);
+    m_cableDepartmentEdit = new QLineEdit(m_cableCacheBox);
+    m_cableBorrowDateEdit = new QDateEdit(QDate::currentDate(), m_cableCacheBox);
+    m_cableBorrowDateEdit->setCalendarPopup(true);
+    m_cableBorrowDateEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    m_cableExpectedReturnEdit = new QDateEdit(QDate::currentDate().addDays(7), m_cableCacheBox);
+    m_cableExpectedReturnEdit->setCalendarPopup(true);
+    m_cableExpectedReturnEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    m_cableActualReturnEdit = new QDateEdit(QDate::currentDate(), m_cableCacheBox);
+    m_cableActualReturnEdit->setCalendarPopup(true);
+    m_cableActualReturnEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    m_cableRemarkEdit = new QPlainTextEdit(m_cableCacheBox);
+    m_cableRemarkEdit->setFixedHeight(82);
+
+    form->addRow(QStringLiteral("借用人"), m_cableBorrowerEdit);
+    form->addRow(QStringLiteral("部门"), m_cableDepartmentEdit);
+    form->addRow(QStringLiteral("借出日期"), m_cableBorrowDateEdit);
+    form->addRow(QStringLiteral("预计归还"), m_cableExpectedReturnEdit);
+    form->addRow(QStringLiteral("实际归还"), m_cableActualReturnEdit);
+    form->addRow(QStringLiteral("备注"), m_cableRemarkEdit);
+    cacheLayout->addLayout(form);
+
+    auto *actionButtons = new QHBoxLayout();
+    auto *borrowButton = new QPushButton(QStringLiteral("批量借出"), m_cableCacheBox);
+    auto *returnButton = new QPushButton(QStringLiteral("批量归还"), m_cableCacheBox);
+    actionButtons->addWidget(borrowButton);
+    actionButtons->addWidget(returnButton);
+    cacheLayout->addLayout(actionButtons);
+
+    root->addLayout(left, 1);
+    root->addWidget(m_cableCacheBox);
+
+    connect(searchButton, &QPushButton::clicked, this, &MainWindow::refreshCables);
+    connect(resetButton, &QPushButton::clicked, this, [this]() {
+        m_cableKeyword->clear();
+        m_cableStatusFilter->setCurrentIndex(0);
+        refreshCables();
+    });
+    connect(importButton, &QPushButton::clicked, this, &MainWindow::importCables);
+    connect(cacheSelectedButton, &QPushButton::clicked, this, &MainWindow::addSelectedCableToCache);
+    connect(m_cableKeyword, &QLineEdit::returnPressed, this, &MainWindow::handleCableSearchReturn);
+    connect(recordSearchButton, &QPushButton::clicked, this, &MainWindow::refreshCableBorrows);
+    connect(m_cableBorrowKeyword, &QLineEdit::returnPressed, this, &MainWindow::refreshCableBorrows);
+    connect(removeCacheButton, &QPushButton::clicked, this, &MainWindow::removeSelectedCableFromCache);
+    connect(clearCacheButton, &QPushButton::clicked, this, &MainWindow::clearCableCache);
+    connect(borrowButton, &QPushButton::clicked, this, &MainWindow::borrowCachedCables);
+    connect(returnButton, &QPushButton::clicked, this, &MainWindow::returnCachedCables);
+    connect(m_cableTable, &QTableView::doubleClicked, this, &MainWindow::addSelectedCableToCache);
+
+    return page;
+}
+
 QWidget *MainWindow::buildStatsTab()
 {
     auto *page = new QWidget(this);
@@ -361,6 +501,8 @@ void MainWindow::refreshAll()
     refreshEquipment();
     refreshBorrow();
     refreshRepair();
+    refreshCables();
+    refreshCableBorrows();
     refreshStats();
 }
 
@@ -391,6 +533,24 @@ void MainWindow::refreshRepair()
                  m_db.createRepairModel(m_repairKeyword->text(), m_repairStatusFilter->currentText(), this),
                  m_repairTable);
     m_repairTable->hideColumn(0);
+}
+
+void MainWindow::refreshCables()
+{
+    replaceModel(m_cableModel,
+                 m_db.createCableModel(m_cableKeyword->text(), m_cableStatusFilter->currentText(), this),
+                 m_cableTable);
+    m_cableTable->hideColumn(0);
+}
+
+void MainWindow::refreshCableBorrows()
+{
+    replaceModel(m_cableBorrowModel,
+                 m_db.createCableBorrowModel(m_cableBorrowKeyword->text(),
+                                             m_cableBorrowStatusFilter->currentText(),
+                                             this),
+                 m_cableBorrowTable);
+    m_cableBorrowTable->hideColumn(0);
 }
 
 void MainWindow::refreshStats()
@@ -564,6 +724,133 @@ void MainWindow::updateSelectedRepair()
     }
 }
 
+void MainWindow::importCables()
+{
+    const QString path = QFileDialog::getOpenFileName(this,
+                                                      QStringLiteral("导入电缆台账"),
+                                                      QString(),
+                                                      QStringLiteral("Excel/CSV (*.xlsx *.csv)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QString error;
+    const QList<CableImportRow> rows = CableImporter::readFile(path, &error);
+    if (!error.isEmpty()) {
+        showError(error);
+        return;
+    }
+
+    CableImportSummary summary;
+    if (!m_db.importCables(rows, &summary)) {
+        showError(m_db.lastError());
+        return;
+    }
+
+    QMessageBox::information(this,
+                             QStringLiteral("导入完成"),
+                             QStringLiteral("新增 %1 条，更新 %2 条，跳过 %3 条。")
+                                 .arg(summary.inserted)
+                                 .arg(summary.updated)
+                                 .arg(summary.skipped));
+}
+
+void MainWindow::handleCableSearchReturn()
+{
+    const QString keyword = m_cableKeyword->text().trimmed();
+    if (m_addCableSearchToCache->isChecked() && !keyword.isEmpty()) {
+        const CableRecord record = m_db.cableByCode(keyword);
+        if (record.id > 0) {
+            addCableToCache(record);
+        } else {
+            showError(QStringLiteral("未找到编号为“%1”的电缆。").arg(keyword));
+        }
+    }
+
+    refreshCables();
+
+    if (m_clearCableSearchAfterEnter->isChecked()) {
+        m_cableKeyword->clear();
+    }
+}
+
+void MainWindow::addSelectedCableToCache()
+{
+    if (!m_cableTable || !m_cableTable->model() || !m_cableTable->selectionModel()) {
+        return;
+    }
+
+    const QModelIndexList rows = m_cableTable->selectionModel()->selectedRows();
+    if (rows.isEmpty()) {
+        showError(QStringLiteral("请先选择要加入缓存栏的电缆。"));
+        return;
+    }
+
+    for (const QModelIndex &rowIndex : rows) {
+        const int id = m_cableTable->model()->index(rowIndex.row(), 0).data().toInt();
+        if (id > 0) {
+            addCableToCache(m_db.cable(id));
+        }
+    }
+}
+
+void MainWindow::removeSelectedCableFromCache()
+{
+    const QList<QListWidgetItem *> items = m_cableCacheList->selectedItems();
+    for (QListWidgetItem *item : items) {
+        m_cachedCableIds.remove(item->data(Qt::UserRole).toInt());
+        delete item;
+    }
+    updateCableCacheTitle();
+}
+
+void MainWindow::clearCableCache()
+{
+    m_cachedCableIds.clear();
+    m_cableCacheList->clear();
+    updateCableCacheTitle();
+}
+
+void MainWindow::borrowCachedCables()
+{
+    CableBorrowRecord record;
+    record.borrower = m_cableBorrowerEdit->text();
+    record.department = m_cableDepartmentEdit->text();
+    record.borrowDate = m_cableBorrowDateEdit->date();
+    record.expectedReturnDate = m_cableExpectedReturnEdit->date();
+    record.remark = m_cableRemarkEdit->toPlainText();
+
+    if (!m_db.borrowCables(cachedCableIds(), record)) {
+        showError(m_db.lastError());
+        return;
+    }
+
+    clearCableCache();
+    m_cableBorrowerEdit->clear();
+    m_cableDepartmentEdit->clear();
+    m_cableBorrowDateEdit->setDate(QDate::currentDate());
+    m_cableExpectedReturnEdit->setDate(QDate::currentDate().addDays(7));
+    m_cableRemarkEdit->clear();
+}
+
+void MainWindow::returnCachedCables()
+{
+    if (QMessageBox::question(this,
+                              QStringLiteral("确认归还"),
+                              QStringLiteral("将缓存栏中的电缆登记为已归还？")) != QMessageBox::Yes) {
+        return;
+    }
+
+    if (!m_db.returnCables(cachedCableIds(), m_cableActualReturnEdit->date(), m_cableRemarkEdit->toPlainText())) {
+        showError(m_db.lastError());
+        return;
+    }
+
+    clearCableCache();
+    m_cableActualReturnEdit->setDate(QDate::currentDate());
+    m_cableRemarkEdit->clear();
+}
+
 void MainWindow::showError(const QString &message)
 {
     QMessageBox::warning(this, QStringLiteral("提示"), message);
@@ -706,5 +993,39 @@ void MainWindow::rebuildBars(QFormLayout *layout, const QList<QPair<QString, int
         bar->setValue(row.second);
         bar->setFormat(QStringLiteral("%1 / %2").arg(row.second).arg(total));
         layout->addRow(QStringLiteral("%1").arg(row.first), bar);
+    }
+}
+
+void MainWindow::addCableToCache(const CableRecord &record)
+{
+    if (record.id <= 0) {
+        return;
+    }
+    if (m_cachedCableIds.contains(record.id)) {
+        statusBar()->showMessage(QStringLiteral("电缆 %1 已在缓存栏中。").arg(record.code), 3000);
+        return;
+    }
+
+    auto *item = new QListWidgetItem(QStringLiteral("%1    %2 -> %3    [%4]")
+                                         .arg(record.code, record.startPoint, record.endPoint, record.status),
+                                     m_cableCacheList);
+    item->setData(Qt::UserRole, record.id);
+    m_cachedCableIds.insert(record.id);
+    updateCableCacheTitle();
+}
+
+QList<int> MainWindow::cachedCableIds() const
+{
+    QList<int> ids;
+    for (int i = 0; i < m_cableCacheList->count(); ++i) {
+        ids.append(m_cableCacheList->item(i)->data(Qt::UserRole).toInt());
+    }
+    return ids;
+}
+
+void MainWindow::updateCableCacheTitle()
+{
+    if (m_cableCacheBox) {
+        m_cableCacheBox->setTitle(QStringLiteral("缓存栏（%1 根）").arg(m_cableCacheList->count()));
     }
 }

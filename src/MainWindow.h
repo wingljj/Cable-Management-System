@@ -2,14 +2,20 @@
 
 #include "DatabaseManager.h"
 
+#include <QList>
 #include <QMainWindow>
 #include <QPointer>
+#include <QSet>
 
+class QCheckBox;
 class QComboBox;
 class QDateEdit;
 class QFormLayout;
+class QGroupBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
+class QListWidgetItem;
 class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
@@ -31,6 +37,8 @@ private slots:
     void refreshEquipment();
     void refreshBorrow();
     void refreshRepair();
+    void refreshCables();
+    void refreshCableBorrows();
     void refreshStats();
 
     void newEquipment();
@@ -45,11 +53,20 @@ private slots:
     void createRepair();
     void updateSelectedRepair();
 
+    void importCables();
+    void handleCableSearchReturn();
+    void addSelectedCableToCache();
+    void removeSelectedCableFromCache();
+    void clearCableCache();
+    void borrowCachedCables();
+    void returnCachedCables();
+
 private:
     void buildUi();
     QWidget *buildEquipmentTab();
     QWidget *buildBorrowTab();
     QWidget *buildRepairTab();
+    QWidget *buildCableTab();
     QWidget *buildStatsTab();
 
     void setupTable(QTableView *table);
@@ -63,6 +80,9 @@ private:
     QLabel *createMetricLabel(const QString &title);
     void updateMetric(QLabel *label, const QString &title, int value);
     void rebuildBars(QFormLayout *layout, const QList<QPair<QString, int>> &rows, int total);
+    void addCableToCache(const CableRecord &record);
+    QList<int> cachedCableIds() const;
+    void updateCableCacheTitle();
 
     DatabaseManager m_db;
     QTabWidget *m_tabs = nullptr;
@@ -107,6 +127,26 @@ private:
     QDateEdit *m_finishedDateEdit = nullptr;
     QTextEdit *m_solutionEdit = nullptr;
     QPointer<QSqlQueryModel> m_repairModel;
+
+    QTableView *m_cableTable = nullptr;
+    QLineEdit *m_cableKeyword = nullptr;
+    QComboBox *m_cableStatusFilter = nullptr;
+    QCheckBox *m_clearCableSearchAfterEnter = nullptr;
+    QCheckBox *m_addCableSearchToCache = nullptr;
+    QTableView *m_cableBorrowTable = nullptr;
+    QLineEdit *m_cableBorrowKeyword = nullptr;
+    QComboBox *m_cableBorrowStatusFilter = nullptr;
+    QListWidget *m_cableCacheList = nullptr;
+    QGroupBox *m_cableCacheBox = nullptr;
+    QLineEdit *m_cableBorrowerEdit = nullptr;
+    QLineEdit *m_cableDepartmentEdit = nullptr;
+    QDateEdit *m_cableBorrowDateEdit = nullptr;
+    QDateEdit *m_cableExpectedReturnEdit = nullptr;
+    QDateEdit *m_cableActualReturnEdit = nullptr;
+    QPlainTextEdit *m_cableRemarkEdit = nullptr;
+    QSet<int> m_cachedCableIds;
+    QPointer<QSqlQueryModel> m_cableModel;
+    QPointer<QSqlQueryModel> m_cableBorrowModel;
 
     QLabel *m_totalMetric = nullptr;
     QLabel *m_availableMetric = nullptr;
