@@ -1,0 +1,36 @@
+# Build outputs
+build/
+dist/
+out/
+
+# Runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# CMake / Ninja generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+*.ninja
+
+# Compiled binaries and objects
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# OS files
+Thumbs.db
+Desktop.ini

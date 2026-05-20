@@ -1,0 +1,121 @@
+#pragma once
+
+#include "DatabaseManager.h"
+
+#include <QMainWindow>
+#include <QPointer>
+
+class QComboBox;
+class QDateEdit;
+class QFormLayout;
+class QLabel;
+class QLineEdit;
+class QPlainTextEdit;
+class QProgressBar;
+class QPushButton;
+class QSpinBox;
+class QTableView;
+class QTabWidget;
+class QTextEdit;
+class QSqlQueryModel;
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
+
+private slots:
+    void refreshAll();
+    void refreshEquipment();
+    void refreshBorrow();
+    void refreshRepair();
+    void refreshStats();
+
+    void newEquipment();
+    void editSelectedEquipment();
+    void deleteSelectedEquipment();
+    void saveEquipmentFromForm();
+    void clearEquipmentForm();
+
+    void createBorrow();
+    void returnSelectedBorrow();
+
+    void createRepair();
+    void updateSelectedRepair();
+
+private:
+    void buildUi();
+    QWidget *buildEquipmentTab();
+    QWidget *buildBorrowTab();
+    QWidget *buildRepairTab();
+    QWidget *buildStatsTab();
+
+    void setupTable(QTableView *table);
+    void showError(const QString &message);
+    int selectedId(QTableView *table) const;
+    void replaceModel(QPointer<QSqlQueryModel> &target, QSqlQueryModel *model, QTableView *table);
+    void populateEquipmentCombo(QComboBox *combo, bool onlyAvailable);
+    void populateFilters();
+    EquipmentRecord equipmentFormRecord() const;
+    void loadEquipmentToForm(int id);
+    QLabel *createMetricLabel(const QString &title);
+    void updateMetric(QLabel *label, const QString &title, int value);
+    void rebuildBars(QFormLayout *layout, const QList<QPair<QString, int>> &rows, int total);
+
+    DatabaseManager m_db;
+    QTabWidget *m_tabs = nullptr;
+
+    QTableView *m_equipmentTable = nullptr;
+    QLineEdit *m_equipmentKeyword = nullptr;
+    QComboBox *m_equipmentCategoryFilter = nullptr;
+    QComboBox *m_equipmentStatusFilter = nullptr;
+    QLineEdit *m_codeEdit = nullptr;
+    QLineEdit *m_nameEdit = nullptr;
+    QLineEdit *m_categoryEdit = nullptr;
+    QLineEdit *m_modelEdit = nullptr;
+    QLineEdit *m_locationEdit = nullptr;
+    QLineEdit *m_ownerEdit = nullptr;
+    QComboBox *m_statusEdit = nullptr;
+    QDateEdit *m_purchaseDateEdit = nullptr;
+    QPlainTextEdit *m_remarkEdit = nullptr;
+    QPushButton *m_saveEquipmentButton = nullptr;
+    int m_currentEquipmentId = -1;
+    QPointer<QSqlQueryModel> m_equipmentModel;
+
+    QTableView *m_borrowTable = nullptr;
+    QLineEdit *m_borrowKeyword = nullptr;
+    QComboBox *m_borrowStatusFilter = nullptr;
+    QComboBox *m_borrowEquipmentCombo = nullptr;
+    QLineEdit *m_borrowerEdit = nullptr;
+    QLineEdit *m_departmentEdit = nullptr;
+    QDateEdit *m_borrowDateEdit = nullptr;
+    QDateEdit *m_expectedReturnEdit = nullptr;
+    QPlainTextEdit *m_borrowRemarkEdit = nullptr;
+    QPointer<QSqlQueryModel> m_borrowModel;
+
+    QTableView *m_repairTable = nullptr;
+    QLineEdit *m_repairKeyword = nullptr;
+    QComboBox *m_repairStatusFilter = nullptr;
+    QComboBox *m_repairEquipmentCombo = nullptr;
+    QLineEdit *m_reporterEdit = nullptr;
+    QDateEdit *m_reportDateEdit = nullptr;
+    QPlainTextEdit *m_issueEdit = nullptr;
+    QLineEdit *m_handlerEdit = nullptr;
+    QComboBox *m_repairStatusEdit = nullptr;
+    QDateEdit *m_finishedDateEdit = nullptr;
+    QTextEdit *m_solutionEdit = nullptr;
+    QPointer<QSqlQueryModel> m_repairModel;
+
+    QLabel *m_totalMetric = nullptr;
+    QLabel *m_availableMetric = nullptr;
+    QLabel *m_borrowedMetric = nullptr;
+    QLabel *m_repairingMetric = nullptr;
+    QLabel *m_openRepairMetric = nullptr;
+    QLabel *m_overdueMetric = nullptr;
+    QFormLayout *m_statusBarsLayout = nullptr;
+    QFormLayout *m_categoryBarsLayout = nullptr;
+    QTableView *m_overdueTable = nullptr;
+    QPointer<QSqlQueryModel> m_overdueModel;
+};
