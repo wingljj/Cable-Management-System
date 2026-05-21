@@ -1,6 +1,8 @@
 #include "MainWindow.h"
 
 #include "CableImporter.h"
+#include "CableLabelCodec.h"
+#include "CableLabelPrinter.h"
 
 #include <QApplication>
 #include <QBoxLayout>
@@ -326,6 +328,7 @@ QWidget *MainWindow::buildCableTab()
     auto *resetButton = new QPushButton(QStringLiteral("重置"), ledgerBox);
     auto *importButton = new QPushButton(QStringLiteral("导入 Excel/CSV"), ledgerBox);
     auto *cacheSelectedButton = new QPushButton(QStringLiteral("加入缓存"), ledgerBox);
+    auto *printSelectedButton = new QPushButton(QStringLiteral("打印标签"), ledgerBox);
 
     filterLayout->addWidget(new QLabel(QStringLiteral("关键字")), 0, 0);
     filterLayout->addWidget(m_cableKeyword, 0, 1);
@@ -337,6 +340,7 @@ QWidget *MainWindow::buildCableTab()
     filterLayout->addWidget(resetButton, 0, 7);
     filterLayout->addWidget(importButton, 0, 8);
     filterLayout->addWidget(cacheSelectedButton, 0, 9);
+    filterLayout->addWidget(printSelectedButton, 0, 10);
     filterLayout->setColumnStretch(1, 2);
 
     m_cableTable = new QTableView(ledgerBox);
@@ -424,6 +428,7 @@ QWidget *MainWindow::buildCableTab()
     });
     connect(importButton, &QPushButton::clicked, this, &MainWindow::importCables);
     connect(cacheSelectedButton, &QPushButton::clicked, this, &MainWindow::addSelectedCableToCache);
+    connect(printSelectedButton, &QPushButton::clicked, this, &MainWindow::printSelectedCableLabels);
     connect(m_cableKeyword, &QLineEdit::returnPressed, this, &MainWindow::handleCableSearchReturn);
     connect(recordSearchButton, &QPushButton::clicked, this, &MainWindow::refreshCableBorrows);
     connect(m_cableBorrowKeyword, &QLineEdit::returnPressed, this, &MainWindow::refreshCableBorrows);
@@ -766,12 +771,25 @@ void MainWindow::importCables()
 void MainWindow::handleCableSearchReturn()
 {
     const QString keyword = m_cableKeyword->text().trimmed();
-    if (m_addCableSearchToCache->isChecked() && !keyword.isEmpty()) {
-        const CableRecord record = m_db.cableByCode(keyword);
+    CableQrScanData scanData;
+    QString decodeError;
+    const bool scanDecoded = CableLabelCodec::decodePayload(keyword, &scanData, &decodeError);
+
+    if (!scanDecoded && !keyword.isEmpty()) {
+        showError(decodeError);
+        return;
+    }
+
+    const QString code = scanDecoded ? scanData.code : keyword;
+    if (scanDecoded && m_cableKeyword) {
+        m_cableKeyword->setText(code);
+    }
+    if (m_addCableSearchToCache->isChecked() && !code.isEmpty()) {
+        const CableRecord record = m_db.cableByCode(code);
         if (record.id > 0) {
             addCableToCache(record);
         } else {
-            showError(QStringLiteral("未找到编号为“%1”的电缆。").arg(keyword));
+            showError(QStringLiteral("未找到编号为“%1”的电缆。").arg(code));
         }
     }
 
@@ -779,6 +797,17 @@ void MainWindow::handleCableSearchReturn()
 
     if (m_clearCableSearchAfterEnter->isChecked()) {
         m_cableKeyword->clear();
+    }
+}
+
+void MainWindow::printSelectedCableLabels()
+{
+    const QList<CableRecord> records = selectedCableRecords(m_cableTable);
+    QString error;
+    if (!CableLabelPrinter::printLabels(records, this, &error)) {
+        if (!error.isEmpty()) {
+            showError(error);
+        }
     }
 }
 
@@ -800,6 +829,24 @@ void MainWindow::addSelectedCableToCache()
             addCableToCache(m_db.cable(id));
         }
     }
+}
+
+QList<CableRecord> MainWindow::selectedCableRecords(QTableView *table) const
+{
+    QList<CableRecord> records;
+    if (!table || !table->model() || !table->selectionModel()) {
+        return records;
+    }
+
+    const QModelIndexList rows = table->selectionModel()->selectedRows();
+    for (const QModelIndex &rowIndex : rows) {
+        const QModelIndex modelIndex = table->model()->index(rowIndex.row(), 0);
+        const int id = modelIndex.data().toInt();
+        if (id > 0) {
+            records.append(m_db.cable(id));
+        }
+    }
+    return records;
 }
 
 void MainWindow::removeSelectedCableFromCache()

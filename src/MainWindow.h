@@ -56,6 +56,7 @@ private slots:
     void importCables();
     void handleCableSearchReturn();
     void addSelectedCableToCache();
+    void printSelectedCableLabels();
     void removeSelectedCableFromCache();
     void clearCableCache();
     void borrowCachedCables();
@@ -82,6 +83,7 @@ private:
     void updateMetric(QLabel *label, const QString &title, int value);
     void rebuildBars(QFormLayout *layout, const QList<QPair<QString, int>> &rows, int total);
     void addCableToCache(const CableRecord &record);
+    QList<CableRecord> selectedCableRecords(QTableView *table) const;
     QList<int> cachedCableIds() const;
     void updateCableCacheTitle();
 

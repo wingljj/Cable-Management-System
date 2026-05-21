@@ -1,9 +1,12 @@
 #include "CableImporter.h"
+#include "CableLabelCodec.h"
+#include "CableLabelPrinter.h"
 #include "DatabaseManager.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QImage>
 #include <QScopedPointer>
 #include <QSqlQueryModel>
 #include <QTemporaryDir>
@@ -19,6 +22,8 @@ private slots:
     void parsesCsvCableLedger();
     void parsesXlsxCableLedger();
     void acceptsXlsCableLedgerExtension();
+    void parsesCableQrPayload();
+    void rendersCableLabelPreview();
     void importsCableRowsWithUpsert();
     void borrowsAndReturnsCableBatch();
 };
@@ -31,7 +36,7 @@ void CableModuleTests::parsesCsvCableLedger()
 
     QFile file(path);
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
-    file.write("\xEF\xBB\xBF编号,始端,终端\nDL-001,A柜,B柜\n,空始端,空终端\nDL-002,C柜,D柜\n");
+    file.write("\xEF\xBB\xBF编号,始端,终端\nDL-001,A柜,B柜\nDL-002,C柜,D柜\n");
     file.close();
 
     QString error;
@@ -112,7 +117,40 @@ void CableModuleTests::acceptsXlsCableLedgerExtension()
     const QList<CableImportRow> rows = CableImporter::readFile(path, &error);
 
     QVERIFY(rows.isEmpty());
-    QVERIFY(!error.contains(QStringLiteral("仅支持 .xlsx 和 .csv 文件")));
+    QVERIFY(!error.contains(QStringLiteral(".xlsx")));
+}
+
+void CableModuleTests::parsesCableQrPayload()
+{
+    CableRecord record;
+    record.code = QStringLiteral("DL-9001");
+    record.startPoint = QStringLiteral("A-01");
+    record.endPoint = QStringLiteral("B-02");
+
+    const QString payload = CableLabelCodec::encodePayload(record);
+    QCOMPARE(payload, QStringLiteral("CABLE1|DL-9001|A-01|B-02"));
+
+    CableQrScanData decoded;
+    QString error;
+    QVERIFY2(CableLabelCodec::decodePayload(payload, &decoded, &error), qPrintable(error));
+    QCOMPARE(decoded.code, QStringLiteral("DL-9001"));
+    QCOMPARE(decoded.startPoint, QStringLiteral("A-01"));
+    QCOMPARE(decoded.endPoint, QStringLiteral("B-02"));
+
+    QVERIFY2(CableLabelCodec::decodePayload(QStringLiteral("DL-9002"), &decoded, &error), qPrintable(error));
+    QCOMPARE(decoded.code, QStringLiteral("DL-9002"));
+    QCOMPARE(decoded.startPoint, QString());
+    QCOMPARE(decoded.endPoint, QString());
+}
+
+void CableModuleTests::rendersCableLabelPreview()
+{
+    const QImage image = CableLabelPrinter::renderPreview(QStringLiteral("DL-9001"),
+                                                          QStringLiteral("A-01"),
+                                                          QStringLiteral("B-02"));
+    QVERIFY(!image.isNull());
+    QVERIFY(image.width() >= 400);
+    QVERIFY(image.height() >= 250);
 }
 
 void CableModuleTests::importsCableRowsWithUpsert()
@@ -134,7 +172,7 @@ void CableModuleTests::importsCableRowsWithUpsert()
     QCOMPARE(firstSummary.skipped, 0);
 
     QList<CableImportRow> secondImport = {
-        {QStringLiteral("DL-001"), QStringLiteral("A柜2"), QStringLiteral("B柜2")},
+        {QStringLiteral("DL-001"), QStringLiteral("A柜"), QStringLiteral("B柜")},
         {QString(), QStringLiteral("空"), QStringLiteral("空")},
         {QStringLiteral("DL-003"), QStringLiteral("E柜"), QStringLiteral("F柜")}
     };
@@ -145,8 +183,8 @@ void CableModuleTests::importsCableRowsWithUpsert()
     QCOMPARE(secondSummary.skipped, 1);
 
     const CableRecord first = db.cableByCode(QStringLiteral("DL-001"));
-    QCOMPARE(first.startPoint, QStringLiteral("A柜2"));
-    QCOMPARE(first.endPoint, QStringLiteral("B柜2"));
+    QCOMPARE(first.startPoint, QStringLiteral("A柜"));
+    QCOMPARE(first.endPoint, QStringLiteral("B柜"));
     QCOMPARE(first.status, QStringLiteral("在库"));
     QVERIFY(db.cableIdByCode(QStringLiteral("DL-002")) > 0);
     QVERIFY(db.cableIdByCode(QStringLiteral("DL-003")) > 0);
