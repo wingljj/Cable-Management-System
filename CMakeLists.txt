@@ -21,6 +21,10 @@ add_executable(DapmQt WIN32
     src/CableImporter.h
     src/CableLabelCodec.cpp
     src/CableLabelCodec.h
+    src/CableScanSupport.cpp
+    src/CableScanSupport.h
+    src/CableScanDialog.cpp
+    src/CableScanDialog.h
     src/CableLabelPrinter.cpp
     src/CableLabelPrinter.h
     third_party/qrcodegen/qrcodegen.cpp
@@ -40,6 +44,8 @@ add_executable(CableModuleTests
     src/CableImporter.h
     src/CableLabelCodec.cpp
     src/CableLabelCodec.h
+    src/CableScanSupport.cpp
+    src/CableScanSupport.h
     src/CableLabelPrinter.cpp
     src/CableLabelPrinter.h
     third_party/qrcodegen/qrcodegen.cpp

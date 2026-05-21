@@ -1,12 +1,11 @@
-#include "MainWindow.h"
+﻿#include "MainWindow.h"
 
 #include "CableImporter.h"
-#include "CableLabelCodec.h"
 #include "CableLabelPrinter.h"
+#include "CableScanDialog.h"
 
 #include <QApplication>
 #include <QBoxLayout>
-#include <QCheckBox>
 #include <QComboBox>
 #include <QDateEdit>
 #include <QFileDialog>
@@ -322,25 +321,25 @@ QWidget *MainWindow::buildCableTab()
     m_cableStatusFilter = new QComboBox(ledgerBox);
     m_cableStatusFilter->addItem(QStringLiteral("全部"));
     m_cableStatusFilter->addItems(m_db.cableStatuses());
-    m_clearCableSearchAfterEnter = new QCheckBox(QStringLiteral("回车后清空"), ledgerBox);
-    m_addCableSearchToCache = new QCheckBox(QStringLiteral("回车加入缓存"), ledgerBox);
     auto *searchButton = new QPushButton(QStringLiteral("查询"), ledgerBox);
     auto *resetButton = new QPushButton(QStringLiteral("重置"), ledgerBox);
     auto *importButton = new QPushButton(QStringLiteral("导入 Excel/CSV"), ledgerBox);
     auto *cacheSelectedButton = new QPushButton(QStringLiteral("加入缓存"), ledgerBox);
     auto *printSelectedButton = new QPushButton(QStringLiteral("打印标签"), ledgerBox);
+    auto *scanBorrowButton = new QPushButton(QStringLiteral("扫码借出"), ledgerBox);
+    auto *scanReturnButton = new QPushButton(QStringLiteral("扫码归还"), ledgerBox);
 
-    filterLayout->addWidget(new QLabel(QStringLiteral("关键字")), 0, 0);
+    filterLayout->addWidget(new QLabel(QStringLiteral("关键词")), 0, 0);
     filterLayout->addWidget(m_cableKeyword, 0, 1);
-    filterLayout->addWidget(m_clearCableSearchAfterEnter, 0, 2);
-    filterLayout->addWidget(m_addCableSearchToCache, 0, 3);
-    filterLayout->addWidget(new QLabel(QStringLiteral("状态")), 0, 4);
-    filterLayout->addWidget(m_cableStatusFilter, 0, 5);
-    filterLayout->addWidget(searchButton, 0, 6);
-    filterLayout->addWidget(resetButton, 0, 7);
-    filterLayout->addWidget(importButton, 0, 8);
-    filterLayout->addWidget(cacheSelectedButton, 0, 9);
-    filterLayout->addWidget(printSelectedButton, 0, 10);
+    filterLayout->addWidget(new QLabel(QStringLiteral("状态")), 0, 2);
+    filterLayout->addWidget(m_cableStatusFilter, 0, 3);
+    filterLayout->addWidget(searchButton, 0, 4);
+    filterLayout->addWidget(resetButton, 0, 5);
+    filterLayout->addWidget(importButton, 0, 6);
+    filterLayout->addWidget(cacheSelectedButton, 0, 7);
+    filterLayout->addWidget(printSelectedButton, 0, 8);
+    filterLayout->addWidget(scanBorrowButton, 0, 9);
+    filterLayout->addWidget(scanReturnButton, 0, 10);
     filterLayout->setColumnStretch(1, 2);
 
     m_cableTable = new QTableView(ledgerBox);
@@ -359,7 +358,7 @@ QWidget *MainWindow::buildCableTab()
     m_cableBorrowStatusFilter->addItem(QStringLiteral("全部"));
     m_cableBorrowStatusFilter->addItems(m_db.cableBorrowStatuses());
     auto *recordSearchButton = new QPushButton(QStringLiteral("查询"), recordBox);
-    recordFilterLayout->addWidget(new QLabel(QStringLiteral("关键字")), 0, 0);
+    recordFilterLayout->addWidget(new QLabel(QStringLiteral("关键词")), 0, 0);
     recordFilterLayout->addWidget(m_cableBorrowKeyword, 0, 1);
     recordFilterLayout->addWidget(new QLabel(QStringLiteral("状态")), 0, 2);
     recordFilterLayout->addWidget(m_cableBorrowStatusFilter, 0, 3);
@@ -429,7 +428,8 @@ QWidget *MainWindow::buildCableTab()
     connect(importButton, &QPushButton::clicked, this, &MainWindow::importCables);
     connect(cacheSelectedButton, &QPushButton::clicked, this, &MainWindow::addSelectedCableToCache);
     connect(printSelectedButton, &QPushButton::clicked, this, &MainWindow::printSelectedCableLabels);
-    connect(m_cableKeyword, &QLineEdit::returnPressed, this, &MainWindow::handleCableSearchReturn);
+    connect(scanBorrowButton, &QPushButton::clicked, this, &MainWindow::openCableScanBorrowDialog);
+    connect(scanReturnButton, &QPushButton::clicked, this, &MainWindow::openCableScanReturnDialog);
     connect(recordSearchButton, &QPushButton::clicked, this, &MainWindow::refreshCableBorrows);
     connect(m_cableBorrowKeyword, &QLineEdit::returnPressed, this, &MainWindow::refreshCableBorrows);
     connect(removeCacheButton, &QPushButton::clicked, this, &MainWindow::removeSelectedCableFromCache);
@@ -768,36 +768,20 @@ void MainWindow::importCables()
                                  .arg(summary.skipped));
 }
 
-void MainWindow::handleCableSearchReturn()
+void MainWindow::openCableScanBorrowDialog()
 {
-    const QString keyword = m_cableKeyword->text().trimmed();
-    CableQrScanData scanData;
-    QString decodeError;
-    const bool scanDecoded = CableLabelCodec::decodePayload(keyword, &scanData, &decodeError);
-
-    if (!scanDecoded && !keyword.isEmpty()) {
-        showError(decodeError);
-        return;
-    }
-
-    const QString code = scanDecoded ? scanData.code : keyword;
-    if (scanDecoded && m_cableKeyword) {
-        m_cableKeyword->setText(code);
-    }
-    if (m_addCableSearchToCache->isChecked() && !code.isEmpty()) {
-        const CableRecord record = m_db.cableByCode(code);
-        if (record.id > 0) {
-            addCableToCache(record);
-        } else {
-            showError(QStringLiteral("未找到编号为“%1”的电缆。").arg(code));
-        }
-    }
-
+    CableScanDialog dialog(&m_db, CableScanMode::Borrow, this);
+    dialog.exec();
     refreshCables();
+    refreshCableBorrows();
+}
 
-    if (m_clearCableSearchAfterEnter->isChecked()) {
-        m_cableKeyword->clear();
-    }
+void MainWindow::openCableScanReturnDialog()
+{
+    CableScanDialog dialog(&m_db, CableScanMode::Return, this);
+    dialog.exec();
+    refreshCables();
+    refreshCableBorrows();
 }
 
 void MainWindow::printSelectedCableLabels()
@@ -1086,3 +1070,4 @@ void MainWindow::updateCableCacheTitle()
         m_cableCacheBox->setTitle(QStringLiteral("缓存栏（%1 根）").arg(m_cableCacheList->count()));
     }
 }
+

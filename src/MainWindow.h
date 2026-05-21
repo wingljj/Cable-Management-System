@@ -7,7 +7,6 @@
 #include <QPointer>
 #include <QSet>
 
-class QCheckBox;
 class QComboBox;
 class QDateEdit;
 class QFormLayout;
@@ -54,7 +53,8 @@ private slots:
     void updateSelectedRepair();
 
     void importCables();
-    void handleCableSearchReturn();
+    void openCableScanBorrowDialog();
+    void openCableScanReturnDialog();
     void addSelectedCableToCache();
     void printSelectedCableLabels();
     void removeSelectedCableFromCache();
@@ -134,8 +134,6 @@ private:
     QTableView *m_cableTable = nullptr;
     QLineEdit *m_cableKeyword = nullptr;
     QComboBox *m_cableStatusFilter = nullptr;
-    QCheckBox *m_clearCableSearchAfterEnter = nullptr;
-    QCheckBox *m_addCableSearchToCache = nullptr;
     QTableView *m_cableBorrowTable = nullptr;
     QLineEdit *m_cableBorrowKeyword = nullptr;
     QComboBox *m_cableBorrowStatusFilter = nullptr;

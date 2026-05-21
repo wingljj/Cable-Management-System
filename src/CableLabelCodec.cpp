@@ -47,7 +47,7 @@ bool CableLabelCodec::decodePayload(const QString &text, CableQrScanData *data, 
         return false;
     }
 
-    if (trimmed.startsWith(QStringLiteral("CABLE1|"))) {
+    if (trimmed.contains(QLatin1Char('|'))) {
         const QStringList parts = trimmed.split(QLatin1Char('|'));
         if (parts.size() != 4) {
             setError(errorMessage, QStringLiteral("二维码内容格式不正确。"));
@@ -65,11 +65,6 @@ bool CableLabelCodec::decodePayload(const QString &text, CableQrScanData *data, 
     }
 
     if (trimmed.startsWith(QLatin1Char('{'))) {
-        setError(errorMessage, QStringLiteral("二维码内容格式不正确。"));
-        return false;
-    }
-
-    if (trimmed.contains(QLatin1Char('|'))) {
         setError(errorMessage, QStringLiteral("二维码内容格式不正确。"));
         return false;
     }

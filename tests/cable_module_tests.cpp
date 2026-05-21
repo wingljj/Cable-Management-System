@@ -1,5 +1,6 @@
 #include "CableImporter.h"
 #include "CableLabelCodec.h"
+#include "CableScanSupport.h"
 #include "CableLabelPrinter.h"
 #include "DatabaseManager.h"
 
@@ -23,6 +24,8 @@ private slots:
     void parsesXlsxCableLedger();
     void acceptsXlsCableLedgerExtension();
     void parsesCableQrPayload();
+    void parsesGenericCableQrPayload();
+    void resolvesScannedCableAndValidatesMode();
     void rendersCableLabelPreview();
     void importsCableRowsWithUpsert();
     void importsLargeCableBatchWithUpsert();
@@ -142,6 +145,73 @@ void CableModuleTests::parsesCableQrPayload()
     QCOMPARE(decoded.code, QStringLiteral("DL-9002"));
     QCOMPARE(decoded.startPoint, QString());
     QCOMPARE(decoded.endPoint, QString());
+}
+
+void CableModuleTests::parsesGenericCableQrPayload()
+{
+    DatabaseManager db;
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    db.setDatabasePath(dir.filePath(QStringLiteral("equipment.db")));
+    QVERIFY2(db.open(), qPrintable(db.lastError()));
+
+    CableImportSummary summary;
+    QVERIFY2(db.importCables({
+                 {QStringLiteral("BH004"), QStringLiteral("SD004"), QStringLiteral("ZD004")},
+             },
+             &summary),
+             qPrintable(db.lastError()));
+
+    CableScanResolvedCable resolved;
+    QString error;
+    QVERIFY2(CableScanSupport::resolveScanText(db, QStringLiteral("ZEBRA|BH004|SD004|ZD004"), &resolved, &error),
+             qPrintable(error));
+    QCOMPARE(resolved.scanData.code, QStringLiteral("BH004"));
+    QCOMPARE(resolved.scanData.startPoint, QStringLiteral("SD004"));
+    QCOMPARE(resolved.scanData.endPoint, QStringLiteral("ZD004"));
+    QCOMPARE(resolved.record.code, QStringLiteral("BH004"));
+}
+
+void CableModuleTests::resolvesScannedCableAndValidatesMode()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    DatabaseManager db;
+    db.setDatabasePath(dir.filePath(QStringLiteral("equipment.db")));
+    QVERIFY2(db.open(), qPrintable(db.lastError()));
+
+    CableImportSummary summary;
+    QVERIFY2(db.importCables({
+                 {QStringLiteral("BH004"), QStringLiteral("SD004"), QStringLiteral("ZD004")},
+             },
+             &summary),
+             qPrintable(db.lastError()));
+
+    CableScanResolvedCable resolved;
+    QString error;
+    QVERIFY2(CableScanSupport::resolveScanText(db,
+                                               QStringLiteral("ZEBRA|BH004|SD004|ZD004"),
+                                               &resolved,
+                                               &error),
+             qPrintable(error));
+
+    QCOMPARE(resolved.record.code, QStringLiteral("BH004"));
+    QCOMPARE(resolved.record.startPoint, QStringLiteral("SD004"));
+    QCOMPARE(resolved.record.endPoint, QStringLiteral("ZD004"));
+    QVERIFY(resolved.record.id > 0);
+
+    QVERIFY2(CableScanSupport::canQueueForMode(CableScanMode::Borrow, resolved.record, &error), qPrintable(error));
+    QVERIFY(!CableScanSupport::canQueueForMode(CableScanMode::Return, resolved.record, &error));
+    QVERIFY(!error.isEmpty());
+
+    CableBorrowRecord borrowRecord;
+    borrowRecord.borrower = QStringLiteral("张三");
+    borrowRecord.borrowDate = QDate(2026, 5, 20);
+    QVERIFY2(db.borrowCables({resolved.record.id}, borrowRecord), qPrintable(db.lastError()));
+
+    const CableRecord borrowed = db.cable(resolved.record.id);
+    QVERIFY(!CableScanSupport::canQueueForMode(CableScanMode::Borrow, borrowed, &error));
+    QVERIFY(CableScanSupport::canQueueForMode(CableScanMode::Return, borrowed, &error));
 }
 
 void CableModuleTests::rendersCableLabelPreview()
