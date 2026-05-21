@@ -25,6 +25,7 @@ private slots:
     void parsesCableQrPayload();
     void rendersCableLabelPreview();
     void importsCableRowsWithUpsert();
+    void importsLargeCableBatchWithUpsert();
     void borrowsAndReturnsCableBatch();
 };
 
@@ -188,6 +189,51 @@ void CableModuleTests::importsCableRowsWithUpsert()
     QCOMPARE(first.status, QStringLiteral("在库"));
     QVERIFY(db.cableIdByCode(QStringLiteral("DL-002")) > 0);
     QVERIFY(db.cableIdByCode(QStringLiteral("DL-003")) > 0);
+}
+
+void CableModuleTests::importsLargeCableBatchWithUpsert()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    DatabaseManager db;
+    db.setDatabasePath(dir.filePath(QStringLiteral("equipment.db")));
+    QVERIFY2(db.open(), qPrintable(db.lastError()));
+
+    QList<CableImportRow> firstImport;
+    for (int i = 0; i < 3000; ++i) {
+        firstImport.append({QStringLiteral("DL-%1").arg(i, 4, 10, QLatin1Char('0')),
+                            QStringLiteral("A%1").arg(i),
+                            QStringLiteral("B%1").arg(i)});
+    }
+
+    CableImportSummary firstSummary;
+    QVERIFY2(db.importCables(firstImport, &firstSummary), qPrintable(db.lastError()));
+    QCOMPARE(firstSummary.inserted, 3000);
+    QCOMPARE(firstSummary.updated, 0);
+    QCOMPARE(firstSummary.skipped, 0);
+
+    QList<CableImportRow> secondImport = {
+        {QStringLiteral("DL-0001"), QStringLiteral("A-new"), QStringLiteral("B-new")},
+        {QString(), QStringLiteral("ignored"), QStringLiteral("ignored")},
+        {QStringLiteral("DL-3000"), QStringLiteral("A3000"), QStringLiteral("B3000")}
+    };
+
+    CableImportSummary secondSummary;
+    QVERIFY2(db.importCables(secondImport, &secondSummary), qPrintable(db.lastError()));
+    QCOMPARE(secondSummary.inserted, 1);
+    QCOMPARE(secondSummary.updated, 1);
+    QCOMPARE(secondSummary.skipped, 1);
+
+    const CableRecord updated = db.cableByCode(QStringLiteral("DL-0001"));
+    QCOMPARE(updated.startPoint, QStringLiteral("A-new"));
+    QCOMPARE(updated.endPoint, QStringLiteral("B-new"));
+    QVERIFY(db.cableIdByCode(QStringLiteral("DL-3000")) > 0);
+
+    QScopedPointer<QSqlQueryModel> model(db.createCableModel(QString(), QString(), nullptr));
+    while (model->canFetchMore()) {
+        model->fetchMore();
+    }
+    QCOMPARE(model->rowCount(), 3001);
 }
 
 void CableModuleTests::borrowsAndReturnsCableBatch()

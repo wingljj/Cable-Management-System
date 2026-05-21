@@ -19,7 +19,7 @@
 4. Excel 导入说明
 - 支持 .csv、.xlsx、.xls。
 - .csv 和 .xlsx 可直接导入。
-- .xls 为 Excel 97-2003 格式，导入时需要内网电脑已安装 Microsoft Excel。
+- .xls 为 Excel 97-2003 格式，导入时需要内网电脑已安装 Microsoft Excel；大量数据建议先另存为 .xlsx 或 .csv，速度会更稳定。
 - 电缆台账表头必须包含：编号、始端、终端。
 
 5. 扫码枪使用说明（ZEBRA DS2208）
@@ -35,6 +35,7 @@
 - 打印对话框中选择 ZT210 打印机。
 - 标签尺寸、打印浓度、速度等请在 ZT210 打印机驱动首选项中配置。
 - 标签二维码内容为电缆编号，标签文字同时显示编号、始端、终端。
+- 如果点击“打印标签”没有弹出打印对话框，请确认程序目录下存在 printsupport\windowsprintersupport.dll，并确认 Windows 中已能看到 ZT210 打印机。
 
 7. 数据备份
 - 数据库文件：data\equipment.db。

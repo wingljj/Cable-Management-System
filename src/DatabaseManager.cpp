@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QSqlQueryModel>
@@ -595,10 +596,29 @@ QStringList DatabaseManager::cableBorrowStatuses() const
 bool DatabaseManager::importCables(const QList<CableImportRow> &rows, CableImportSummary *summary)
 {
     CableImportSummary localSummary;
+    QSet<QString> existingCodes;
+    QSqlQuery existingQuery(m_db);
+    if (!existingQuery.exec(QStringLiteral("SELECT code FROM cables"))) {
+        setLastError(QStringLiteral("读取已有电缆编号失败：%1").arg(existingQuery.lastError().text()));
+        return false;
+    }
+    while (existingQuery.next()) {
+        existingCodes.insert(existingQuery.value(0).toString());
+    }
+
     if (!m_db.transaction()) {
         setLastError(QStringLiteral("开启电缆导入事务失败：%1").arg(m_db.lastError().text()));
         return false;
     }
+
+    QSqlQuery insertQuery(m_db);
+    insertQuery.prepare(QStringLiteral(
+        "INSERT INTO cables(code, start_point, end_point, status) "
+        "VALUES(:code, :start_point, :end_point, '在库')"));
+
+    QSqlQuery updateQuery(m_db);
+    updateQuery.prepare(QStringLiteral(
+        "UPDATE cables SET start_point=:start_point, end_point=:end_point WHERE code=:code"));
 
     for (const CableImportRow &row : rows) {
         const QString code = row.code.trimmed();
@@ -607,25 +627,12 @@ bool DatabaseManager::importCables(const QList<CableImportRow> &rows, CableImpor
             continue;
         }
 
-        QSqlQuery existing(m_db);
-        existing.prepare(QStringLiteral("SELECT id FROM cables WHERE code=:code"));
-        existing.bindValue(QStringLiteral(":code"), code);
-        if (!existing.exec()) {
-            m_db.rollback();
-            setLastError(QStringLiteral("检查电缆编号失败：%1").arg(existing.lastError().text()));
-            return false;
-        }
-
-        QSqlQuery query(m_db);
-        if (existing.next()) {
-            query.prepare(QStringLiteral(
-                "UPDATE cables SET start_point=:start_point, end_point=:end_point WHERE code=:code"));
+        QSqlQuery &query = existingCodes.contains(code) ? updateQuery : insertQuery;
+        if (existingCodes.contains(code)) {
             ++localSummary.updated;
         } else {
-            query.prepare(QStringLiteral(
-                "INSERT INTO cables(code, start_point, end_point, status) "
-                "VALUES(:code, :start_point, :end_point, '在库')"));
             ++localSummary.inserted;
+            existingCodes.insert(code);
         }
 
         query.bindValue(QStringLiteral(":code"), code);

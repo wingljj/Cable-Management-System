@@ -10,6 +10,7 @@
 #include <QPainter>
 #include <QPageLayout>
 #include <QPrinter>
+#include <QPrinterInfo>
 #include <QPrintDialog>
 #include <QRect>
 #include <QRectF>
@@ -81,6 +82,13 @@ bool CableLabelPrinter::printLabels(const QList<CableRecord> &records, QWidget *
     if (records.isEmpty()) {
         if (errorMessage) {
             *errorMessage = QStringLiteral("请先选择要打印的电缆。");
+        }
+        return false;
+    }
+
+    if (QPrinterInfo::availablePrinters().isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("系统未找到可用打印机，请先安装并连接 ZT210 打印机驱动。");
         }
         return false;
     }

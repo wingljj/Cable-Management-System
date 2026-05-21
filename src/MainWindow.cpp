@@ -927,7 +927,9 @@ void MainWindow::replaceModel(QPointer<QSqlQueryModel> &target, QSqlQueryModel *
     }
     target = model;
     table->setModel(model);
-    table->resizeColumnsToContents();
+    if (table->horizontalHeader()->sectionResizeMode(0) != QHeaderView::Stretch) {
+        table->resizeColumnsToContents();
+    }
 }
 
 void MainWindow::populateEquipmentCombo(QComboBox *combo, bool onlyAvailable)
