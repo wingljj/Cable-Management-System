@@ -27,11 +27,9 @@ QString CableLabelCodec::encodePayload(const CableRecord &record)
 
 QString CableLabelCodec::encodePayload(const QString &code, const QString &startPoint, const QString &endPoint)
 {
-    const auto encodeField = [](const QString &value) {
-        return QString::fromLatin1(QUrl::toPercentEncoding(value.trimmed()));
-    };
-
-    return QStringLiteral("CABLE1|%1|%2|%3").arg(encodeField(code), encodeField(startPoint), encodeField(endPoint));
+    Q_UNUSED(startPoint)
+    Q_UNUSED(endPoint)
+    return code.trimmed();
 }
 
 bool CableLabelCodec::decodePayload(const QString &text, CableQrScanData *data, QString *errorMessage)
@@ -81,5 +79,5 @@ bool CableLabelCodec::decodePayload(const QString &text, CableQrScanData *data, 
 
 QString CableLabelCodec::displayText(const QString &code, const QString &startPoint, const QString &endPoint)
 {
-    return QStringLiteral("%1\n%2 -> %3").arg(trimmedOrEmpty(code), trimmedOrEmpty(startPoint), trimmedOrEmpty(endPoint));
+    return QStringLiteral("%1\n%2 -> %3").arg(trimmedOrEmpty(code), trimmedOrEmpty(endPoint), trimmedOrEmpty(startPoint));
 }

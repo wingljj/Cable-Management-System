@@ -69,7 +69,7 @@ void CableScanDialog::buildUi()
     auto *searchLayout = new QVBoxLayout(searchBox);
     auto *searchBar = new QHBoxLayout();
     m_searchEdit = new QLineEdit(searchBox);
-    m_searchEdit->setPlaceholderText(QStringLiteral("编号 / 始端 / 终端"));
+    m_searchEdit->setPlaceholderText(QStringLiteral("编号 / 终端 / 始端"));
     auto *searchButton = new QPushButton(QStringLiteral("搜索"), searchBox);
     auto *addButton = new QPushButton(QStringLiteral("加入缓存"), searchBox);
     searchBar->addWidget(m_searchEdit, 1);
@@ -178,9 +178,9 @@ void CableScanDialog::handleScanReturn()
     }
 
     const QString confirmText = QStringLiteral("%1\n\n当前状态：%2\n\n确认加入%3吗？")
-                                    .arg(CableLabelCodec::displayText(resolved.scanData.code,
-                                                                       resolved.scanData.startPoint,
-                                                                       resolved.scanData.endPoint),
+                                    .arg(CableLabelCodec::displayText(resolved.record.code,
+                                                                       resolved.record.startPoint,
+                                                                       resolved.record.endPoint),
                                          resolved.record.status,
                                          CableScanSupport::cacheTitle(m_mode));
     if (QMessageBox::question(this, CableScanSupport::modeTitle(m_mode), confirmText) == QMessageBox::Yes) {
@@ -312,7 +312,7 @@ void CableScanDialog::addCableToCache(const CableRecord &record)
     }
 
     auto *item = new QListWidgetItem(QStringLiteral("%1    %2 -> %3    [%4]")
-                                         .arg(record.code, record.startPoint, record.endPoint, record.status),
+                                         .arg(record.code, record.endPoint, record.startPoint, record.status),
                                      m_cacheList);
     item->setData(Qt::UserRole, record.id);
     m_cachedIds.insert(record.id);

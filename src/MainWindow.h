@@ -54,6 +54,11 @@ private slots:
     void updateSelectedRepair();
 
     void importCables();
+    void newCable();
+    void editSelectedCable();
+    void deleteSelectedCable();
+    void saveCableFromForm();
+    void clearCableForm();
     void openCableScanBorrowDialog();
     void openCableScanReturnDialog();
     void handleCableKeywordReturn();
@@ -81,6 +86,8 @@ private:
     void populateFilters();
     EquipmentRecord equipmentFormRecord() const;
     void loadEquipmentToForm(int id);
+    CableRecord cableFormRecord() const;
+    void loadCableToForm(int id);
     QLabel *createMetricLabel(const QString &title);
     void updateMetric(QLabel *label, const QString &title, int value);
     void rebuildBars(QFormLayout *layout, const QList<QPair<QString, int>> &rows, int total);
@@ -138,9 +145,13 @@ private:
     QCheckBox *m_cableClearSearchAfterEnter = nullptr;
     QCheckBox *m_cableEnterAddsToCache = nullptr;
     QComboBox *m_cableStatusFilter = nullptr;
-    QTableView *m_cableBorrowTable = nullptr;
-    QLineEdit *m_cableBorrowKeyword = nullptr;
-    QComboBox *m_cableBorrowStatusFilter = nullptr;
+    QLineEdit *m_cableCodeEdit = nullptr;
+    QLineEdit *m_cableStartPointEdit = nullptr;
+    QLineEdit *m_cableEndPointEdit = nullptr;
+    QDateEdit *m_cableUsageExpiryEdit = nullptr;
+    QPlainTextEdit *m_cableLedgerRemarkEdit = nullptr;
+    QPushButton *m_saveCableButton = nullptr;
+    int m_currentCableId = -1;
     QListWidget *m_cableCacheList = nullptr;
     QGroupBox *m_cableCacheBox = nullptr;
     QLineEdit *m_cableBorrowerEdit = nullptr;
@@ -151,7 +162,6 @@ private:
     QPlainTextEdit *m_cableRemarkEdit = nullptr;
     QSet<int> m_cachedCableIds;
     QPointer<QSqlQueryModel> m_cableModel;
-    QPointer<QSqlQueryModel> m_cableBorrowModel;
 
     QLabel *m_totalMetric = nullptr;
     QLabel *m_availableMetric = nullptr;
@@ -159,8 +169,11 @@ private:
     QLabel *m_repairingMetric = nullptr;
     QLabel *m_openRepairMetric = nullptr;
     QLabel *m_overdueMetric = nullptr;
+    QLabel *m_cableOverdueMetric = nullptr;
     QFormLayout *m_statusBarsLayout = nullptr;
     QFormLayout *m_categoryBarsLayout = nullptr;
     QTableView *m_overdueTable = nullptr;
+    QTableView *m_cableOverdueTable = nullptr;
     QPointer<QSqlQueryModel> m_overdueModel;
+    QPointer<QSqlQueryModel> m_cableOverdueModel;
 };

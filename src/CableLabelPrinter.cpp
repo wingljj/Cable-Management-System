@@ -32,7 +32,7 @@ QImage renderOnePreview(const QString &code, const QString &startPoint, const QS
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
     const int margin = 24;
-    const int qrSide = qMin(size.height() - margin * 2, size.width() / 2 - margin * 2);
+    const int qrSide = qMin(size.height() - margin * 2, size.width() / 3 - margin);
     const QRect qrRect(margin, margin, qrSide, qrSide);
     const int moduleCount = qr.getSize();
     const double scale = static_cast<double>(qrRect.width()) / static_cast<double>(moduleCount);
@@ -49,18 +49,20 @@ QImage renderOnePreview(const QString &code, const QString &startPoint, const QS
     }
 
     painter.setPen(Qt::black);
-    QFont titleFont(QStringLiteral("Microsoft YaHei UI"));
-    titleFont.setPointSize(20);
-    titleFont.setBold(true);
-    painter.setFont(titleFont);
-    const QRect textArea(qrRect.right() + 24, margin, size.width() - qrRect.right() - margin - 24, size.height() - margin * 2);
-    painter.drawText(textArea, Qt::AlignTop | Qt::AlignLeft, QStringLiteral("电缆二维码"));
+    const QRect textArea(qrRect.right() + 28, margin, size.width() - qrRect.right() - margin - 28, size.height() - margin * 2);
+
+    QFont codeFont(QStringLiteral("Microsoft YaHei UI"));
+    codeFont.setPointSize(30);
+    codeFont.setBold(true);
+    painter.setFont(codeFont);
+    painter.drawText(textArea, Qt::AlignTop | Qt::AlignLeft, code);
 
     QFont bodyFont(QStringLiteral("Microsoft YaHei UI"));
-    bodyFont.setPointSize(16);
+    bodyFont.setPointSize(22);
+    bodyFont.setBold(true);
     painter.setFont(bodyFont);
-    painter.drawText(textArea.adjusted(0, 56, 0, 0), Qt::AlignTop | Qt::AlignLeft,
-                     QStringLiteral("编号：%1\n始端：%2\n终端：%3").arg(code, startPoint, endPoint));
+    painter.drawText(textArea.adjusted(0, 72, 0, 0), Qt::AlignTop | Qt::AlignLeft,
+                     QStringLiteral("终端：%1\n始端：%2").arg(endPoint, startPoint));
 
     return image;
 }

@@ -1,5 +1,6 @@
 #include "CableImporter.h"
 
+#include <QDate>
 #include <QFile>
 #include <QFileInfo>
 #include <QTextCodec>
@@ -65,6 +66,36 @@ int headerIndex(const QList<QString> &headers, const QString &name)
     return -1;
 }
 
+QDate parseDateCell(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    if (trimmed.isEmpty()) {
+        return QDate();
+    }
+
+    const QStringList formats = {
+        QStringLiteral("yyyy-MM-dd"),
+        QStringLiteral("yyyy/M/d"),
+        QStringLiteral("yyyy/MM/dd"),
+        QStringLiteral("yyyy.M.d"),
+        QStringLiteral("yyyy.MM.dd")
+    };
+    for (const QString &format : formats) {
+        const QDate date = QDate::fromString(trimmed, format);
+        if (date.isValid()) {
+            return date;
+        }
+    }
+
+    bool ok = false;
+    const int serial = trimmed.toInt(&ok);
+    if (ok && serial > 0) {
+        return QDate(1899, 12, 30).addDays(serial);
+    }
+
+    return QDate();
+}
+
 bool isEmptyRow(const QList<QString> &cells)
 {
     for (const QString &cell : cells) {
@@ -75,12 +106,23 @@ bool isEmptyRow(const QList<QString> &cells)
     return true;
 }
 
-CableImportRow rowFromCells(const QList<QString> &cells, int codeIndex, int startIndex, int endIndex)
+CableImportRow rowFromCells(const QList<QString> &cells,
+                            int codeIndex,
+                            int startIndex,
+                            int endIndex,
+                            int usageExpiryIndex,
+                            int remarkIndex)
 {
     CableImportRow row;
     row.code = codeIndex >= 0 && codeIndex < cells.size() ? cells.at(codeIndex).trimmed() : QString();
     row.startPoint = startIndex >= 0 && startIndex < cells.size() ? cells.at(startIndex).trimmed() : QString();
     row.endPoint = endIndex >= 0 && endIndex < cells.size() ? cells.at(endIndex).trimmed() : QString();
+    row.usageExpiryDate = usageExpiryIndex >= 0 && usageExpiryIndex < cells.size()
+                              ? parseDateCell(cells.at(usageExpiryIndex))
+                              : QDate();
+    row.remark = remarkIndex >= 0 && remarkIndex < cells.size() ? cells.at(remarkIndex).trimmed() : QString();
+    row.usageExpiryDateSpecified = usageExpiryIndex >= 0;
+    row.remarkSpecified = remarkIndex >= 0;
     return row;
 }
 
@@ -109,6 +151,8 @@ QList<CableImportRow> readCsv(const QString &path, QString *errorMessage)
     const int codeIndex = headerIndex(headers, QStringLiteral("编号"));
     const int startIndex = headerIndex(headers, QStringLiteral("始端"));
     const int endIndex = headerIndex(headers, QStringLiteral("终端"));
+    const int usageExpiryIndex = headerIndex(headers, QStringLiteral("使用期限"));
+    const int remarkIndex = headerIndex(headers, QStringLiteral("备注"));
     if (codeIndex < 0 || startIndex < 0 || endIndex < 0) {
         setError(errorMessage, QStringLiteral("导入文件必须包含表头：编号、始端、终端。"));
         return {};
@@ -116,7 +160,12 @@ QList<CableImportRow> readCsv(const QString &path, QString *errorMessage)
 
     QList<CableImportRow> rows;
     while (!stream.atEnd()) {
-        CableImportRow row = rowFromCells(parseCsvLine(stream.readLine()), codeIndex, startIndex, endIndex);
+        CableImportRow row = rowFromCells(parseCsvLine(stream.readLine()),
+                                          codeIndex,
+                                          startIndex,
+                                          endIndex,
+                                          usageExpiryIndex,
+                                          remarkIndex);
         if (!row.code.isEmpty()) {
             rows.append(row);
         }
@@ -273,6 +322,8 @@ QList<CableImportRow> readXlsx(const QString &path, QString *errorMessage)
     const int codeIndex = headerIndex(headers, QStringLiteral("编号"));
     const int startIndex = headerIndex(headers, QStringLiteral("始端"));
     const int endIndex = headerIndex(headers, QStringLiteral("终端"));
+    const int usageExpiryIndex = headerIndex(headers, QStringLiteral("使用期限"));
+    const int remarkIndex = headerIndex(headers, QStringLiteral("备注"));
     if (codeIndex < 0 || startIndex < 0 || endIndex < 0) {
         setError(errorMessage, QStringLiteral("导入文件必须包含表头：编号、始端、终端。"));
         return {};
@@ -280,7 +331,12 @@ QList<CableImportRow> readXlsx(const QString &path, QString *errorMessage)
 
     QList<CableImportRow> rows;
     for (int i = 1; i < sheetRows.size(); ++i) {
-        CableImportRow row = rowFromCells(sheetRows.at(i), codeIndex, startIndex, endIndex);
+        CableImportRow row = rowFromCells(sheetRows.at(i),
+                                          codeIndex,
+                                          startIndex,
+                                          endIndex,
+                                          usageExpiryIndex,
+                                          remarkIndex);
         if (!row.code.isEmpty()) {
             rows.append(row);
         }
@@ -348,6 +404,8 @@ QList<CableImportRow> readXls(const QString &path, QString *errorMessage)
     const int codeIndex = headerIndex(headers, QStringLiteral("编号"));
     const int startIndex = headerIndex(headers, QStringLiteral("始端"));
     const int endIndex = headerIndex(headers, QStringLiteral("终端"));
+    const int usageExpiryIndex = headerIndex(headers, QStringLiteral("使用期限"));
+    const int remarkIndex = headerIndex(headers, QStringLiteral("备注"));
     if (codeIndex < 0 || startIndex < 0 || endIndex < 0) {
         workbook->dynamicCall("Close(Boolean)", false);
         excel.dynamicCall("Quit()");
@@ -357,7 +415,12 @@ QList<CableImportRow> readXls(const QString &path, QString *errorMessage)
 
     QList<CableImportRow> result;
     for (int row = 2; row <= rowCount; ++row) {
-        CableImportRow record = rowFromCells(excelRowValues(sheet.data(), row, columnCount), codeIndex, startIndex, endIndex);
+        CableImportRow record = rowFromCells(excelRowValues(sheet.data(), row, columnCount),
+                                             codeIndex,
+                                             startIndex,
+                                             endIndex,
+                                             usageExpiryIndex,
+                                             remarkIndex);
         if (!record.code.isEmpty()) {
             result.append(record);
         }

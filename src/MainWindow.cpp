@@ -312,13 +312,12 @@ QWidget *MainWindow::buildCableTab()
     root->setContentsMargins(14, 14, 14, 14);
     root->setSpacing(14);
 
-    auto *left = new QVBoxLayout();
     auto *ledgerBox = new QGroupBox(QStringLiteral("电缆台账"));
     auto *ledgerLayout = new QVBoxLayout(ledgerBox);
 
     auto *filterLayout = new QGridLayout();
     m_cableKeyword = new QLineEdit(ledgerBox);
-    m_cableKeyword->setPlaceholderText(QStringLiteral("编号 / 始端 / 终端"));
+    m_cableKeyword->setPlaceholderText(QStringLiteral("编号 / 终端 / 始端 / 借用人 / 部门"));
     m_cableClearSearchAfterEnter = new QCheckBox(QStringLiteral("回车后清空"), ledgerBox);
     m_cableEnterAddsToCache = new QCheckBox(QStringLiteral("回车加入缓存"), ledgerBox);
     m_cableStatusFilter = new QComboBox(ledgerBox);
@@ -352,29 +351,38 @@ QWidget *MainWindow::buildCableTab()
     m_cableTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ledgerLayout->addLayout(filterLayout);
     ledgerLayout->addWidget(m_cableTable);
-    left->addWidget(ledgerBox, 2);
 
-    auto *recordBox = new QGroupBox(QStringLiteral("电缆借还记录"));
-    auto *recordLayout = new QVBoxLayout(recordBox);
-    auto *recordFilterLayout = new QGridLayout();
-    m_cableBorrowKeyword = new QLineEdit(recordBox);
-    m_cableBorrowKeyword->setPlaceholderText(QStringLiteral("电缆 / 借用人 / 部门"));
-    m_cableBorrowStatusFilter = new QComboBox(recordBox);
-    m_cableBorrowStatusFilter->addItem(QStringLiteral("全部"));
-    m_cableBorrowStatusFilter->addItems(m_db.cableBorrowStatuses());
-    auto *recordSearchButton = new QPushButton(QStringLiteral("查询"), recordBox);
-    recordFilterLayout->addWidget(new QLabel(QStringLiteral("关键词")), 0, 0);
-    recordFilterLayout->addWidget(m_cableBorrowKeyword, 0, 1);
-    recordFilterLayout->addWidget(new QLabel(QStringLiteral("状态")), 0, 2);
-    recordFilterLayout->addWidget(m_cableBorrowStatusFilter, 0, 3);
-    recordFilterLayout->addWidget(recordSearchButton, 0, 4);
-    recordFilterLayout->setColumnStretch(1, 1);
+    auto *right = new QVBoxLayout();
+    auto *formBox = new QGroupBox(QStringLiteral("电缆台账信息"));
+    formBox->setMaximumWidth(410);
+    auto *ledgerForm = new QFormLayout(formBox);
+    ledgerForm->setLabelAlignment(Qt::AlignRight);
+    m_cableCodeEdit = new QLineEdit(formBox);
+    m_cableEndPointEdit = new QLineEdit(formBox);
+    m_cableStartPointEdit = new QLineEdit(formBox);
+    m_cableUsageExpiryEdit = new QDateEdit(formBox);
+    m_cableUsageExpiryEdit->setCalendarPopup(true);
+    m_cableUsageExpiryEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    m_cableUsageExpiryEdit->setMinimumDate(QDate(1900, 1, 1));
+    m_cableUsageExpiryEdit->setSpecialValueText(QStringLiteral("无"));
+    m_cableUsageExpiryEdit->setDate(m_cableUsageExpiryEdit->minimumDate());
+    m_cableLedgerRemarkEdit = new QPlainTextEdit(formBox);
+    m_cableLedgerRemarkEdit->setFixedHeight(72);
+    ledgerForm->addRow(QStringLiteral("编号"), m_cableCodeEdit);
+    ledgerForm->addRow(QStringLiteral("终端"), m_cableEndPointEdit);
+    ledgerForm->addRow(QStringLiteral("始端"), m_cableStartPointEdit);
+    ledgerForm->addRow(QStringLiteral("使用期限"), m_cableUsageExpiryEdit);
+    ledgerForm->addRow(QStringLiteral("备注"), m_cableLedgerRemarkEdit);
 
-    m_cableBorrowTable = new QTableView(recordBox);
-    setupStretchTable(m_cableBorrowTable);
-    recordLayout->addLayout(recordFilterLayout);
-    recordLayout->addWidget(m_cableBorrowTable);
-    left->addWidget(recordBox, 1);
+    auto *ledgerButtons = new QHBoxLayout();
+    auto *newCableButton = new QPushButton(QStringLiteral("新增"), formBox);
+    m_saveCableButton = new QPushButton(QStringLiteral("保存"), formBox);
+    auto *deleteCableButton = new QPushButton(QStringLiteral("删除"), formBox);
+    ledgerButtons->addWidget(newCableButton);
+    ledgerButtons->addWidget(m_saveCableButton);
+    ledgerButtons->addWidget(deleteCableButton);
+    ledgerForm->addRow(ledgerButtons);
+    right->addWidget(formBox);
 
     m_cableCacheBox = new QGroupBox(QStringLiteral("缓存栏（0 根）"));
     m_cableCacheBox->setMaximumWidth(410);
@@ -420,9 +428,10 @@ QWidget *MainWindow::buildCableTab()
     actionButtons->addWidget(borrowButton);
     actionButtons->addWidget(returnButton);
     cacheLayout->addLayout(actionButtons);
+    right->addWidget(m_cableCacheBox, 1);
 
-    root->addLayout(left, 1);
-    root->addWidget(m_cableCacheBox);
+    root->addWidget(ledgerBox, 1);
+    root->addLayout(right);
 
     connect(searchButton, &QPushButton::clicked, this, &MainWindow::refreshCables);
     connect(m_cableKeyword, &QLineEdit::returnPressed, this, &MainWindow::handleCableKeywordReturn);
@@ -436,13 +445,20 @@ QWidget *MainWindow::buildCableTab()
     connect(printSelectedButton, &QPushButton::clicked, this, &MainWindow::printSelectedCableLabels);
     connect(scanBorrowButton, &QPushButton::clicked, this, &MainWindow::openCableScanBorrowDialog);
     connect(scanReturnButton, &QPushButton::clicked, this, &MainWindow::openCableScanReturnDialog);
-    connect(recordSearchButton, &QPushButton::clicked, this, &MainWindow::refreshCableBorrows);
-    connect(m_cableBorrowKeyword, &QLineEdit::returnPressed, this, &MainWindow::refreshCableBorrows);
+    connect(newCableButton, &QPushButton::clicked, this, &MainWindow::newCable);
+    connect(m_saveCableButton, &QPushButton::clicked, this, &MainWindow::saveCableFromForm);
+    connect(deleteCableButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedCable);
     connect(removeCacheButton, &QPushButton::clicked, this, &MainWindow::removeSelectedCableFromCache);
     connect(clearCacheButton, &QPushButton::clicked, this, &MainWindow::clearCableCache);
     connect(borrowButton, &QPushButton::clicked, this, &MainWindow::borrowCachedCables);
     connect(returnButton, &QPushButton::clicked, this, &MainWindow::returnCachedCables);
     connect(m_cableTable, &QTableView::doubleClicked, this, &MainWindow::addSelectedCableToCache);
+    connect(m_cableTable, &QTableView::clicked, this, [this]() {
+        const int id = selectedId(m_cableTable);
+        if (id > 0) {
+            loadCableToForm(id);
+        }
+    });
 
     return page;
 }
@@ -460,19 +476,22 @@ QWidget *MainWindow::buildStatsTab()
     m_borrowedMetric = createMetricLabel(QStringLiteral("借出"));
     m_repairingMetric = createMetricLabel(QStringLiteral("维修中"));
     m_openRepairMetric = createMetricLabel(QStringLiteral("待处理报修"));
-    m_overdueMetric = createMetricLabel(QStringLiteral("逾期未还"));
+    m_overdueMetric = createMetricLabel(QStringLiteral("设备逾期未还"));
+    m_cableOverdueMetric = createMetricLabel(QStringLiteral("电缆逾期未还"));
     metrics->addWidget(m_totalMetric, 0, 0);
     metrics->addWidget(m_availableMetric, 0, 1);
     metrics->addWidget(m_borrowedMetric, 0, 2);
     metrics->addWidget(m_repairingMetric, 0, 3);
     metrics->addWidget(m_openRepairMetric, 0, 4);
     metrics->addWidget(m_overdueMetric, 0, 5);
+    metrics->addWidget(m_cableOverdueMetric, 0, 6);
     metrics->setColumnStretch(0, 1);
     metrics->setColumnStretch(1, 1);
     metrics->setColumnStretch(2, 1);
     metrics->setColumnStretch(3, 1);
     metrics->setColumnStretch(4, 1);
     metrics->setColumnStretch(5, 1);
+    metrics->setColumnStretch(6, 1);
     root->addLayout(metrics);
 
     auto *middle = new QHBoxLayout();
@@ -486,9 +505,17 @@ QWidget *MainWindow::buildStatsTab()
 
     auto *overdueBox = new QGroupBox(QStringLiteral("逾期未还清单"), page);
     auto *overdueLayout = new QVBoxLayout(overdueBox);
+    auto *overdueTabs = new QTabWidget(overdueBox);
+
     m_overdueTable = new QTableView(overdueBox);
     setupTable(m_overdueTable);
-    overdueLayout->addWidget(m_overdueTable);
+    overdueTabs->addTab(m_overdueTable, QStringLiteral("设备"));
+
+    m_cableOverdueTable = new QTableView(overdueBox);
+    setupTable(m_cableOverdueTable);
+    overdueTabs->addTab(m_cableOverdueTable, QStringLiteral("电缆"));
+
+    overdueLayout->addWidget(overdueTabs);
     root->addWidget(overdueBox, 1);
 
     return page;
@@ -519,7 +546,6 @@ void MainWindow::refreshAll()
     refreshBorrow();
     refreshRepair();
     refreshCables();
-    refreshCableBorrows();
     refreshStats();
 }
 
@@ -559,17 +585,16 @@ void MainWindow::refreshCables()
                  m_cableTable);
     m_cableTable->hideColumn(0);
     m_cableTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+    const int overdue = m_db.overdueCableBorrowCount();
+    if (overdue > 0) {
+        statusBar()->showMessage(QStringLiteral("电缆逾期未归还 %1 根").arg(overdue), 5000);
+    }
 }
 
 void MainWindow::refreshCableBorrows()
 {
-    replaceModel(m_cableBorrowModel,
-                 m_db.createCableBorrowModel(m_cableBorrowKeyword->text(),
-                                             m_cableBorrowStatusFilter->currentText(),
-                                             this),
-                 m_cableBorrowTable);
-    m_cableBorrowTable->hideColumn(0);
-    m_cableBorrowTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    refreshCables();
 }
 
 void MainWindow::refreshStats()
@@ -580,7 +605,8 @@ void MainWindow::refreshStats()
     updateMetric(m_borrowedMetric, QStringLiteral("借出"), summary.value(QStringLiteral("borrowed")).toInt());
     updateMetric(m_repairingMetric, QStringLiteral("维修中"), summary.value(QStringLiteral("repairing")).toInt());
     updateMetric(m_openRepairMetric, QStringLiteral("待处理报修"), summary.value(QStringLiteral("openRepairs")).toInt());
-    updateMetric(m_overdueMetric, QStringLiteral("逾期未还"), summary.value(QStringLiteral("overdue")).toInt());
+    updateMetric(m_overdueMetric, QStringLiteral("设备逾期未还"), summary.value(QStringLiteral("overdue")).toInt());
+    updateMetric(m_cableOverdueMetric, QStringLiteral("电缆逾期未还"), summary.value(QStringLiteral("cableOverdue")).toInt());
 
     const int total = summary.value(QStringLiteral("total")).toInt();
     rebuildBars(m_statusBarsLayout, m_db.countByStatus(), total);
@@ -588,6 +614,8 @@ void MainWindow::refreshStats()
 
     replaceModel(m_overdueModel, m_db.createOverdueBorrowModel(this), m_overdueTable);
     m_overdueTable->resizeColumnsToContents();
+    replaceModel(m_cableOverdueModel, m_db.createOverdueCableBorrowModel(this), m_cableOverdueTable);
+    m_cableOverdueTable->resizeColumnsToContents();
 }
 
 void MainWindow::newEquipment()
@@ -774,12 +802,71 @@ void MainWindow::importCables()
                                  .arg(summary.skipped));
 }
 
+void MainWindow::newCable()
+{
+    clearCableForm();
+    m_cableCodeEdit->setFocus();
+}
+
+void MainWindow::editSelectedCable()
+{
+    const int id = selectedId(m_cableTable);
+    if (id > 0) {
+        loadCableToForm(id);
+    }
+}
+
+void MainWindow::deleteSelectedCable()
+{
+    const int id = selectedId(m_cableTable);
+    if (id <= 0) {
+        showError(QStringLiteral("请先选择要删除的电缆。"));
+        return;
+    }
+
+    if (QMessageBox::question(this, QStringLiteral("确认删除"), QStringLiteral("确定删除选中的电缆台账吗？")) !=
+        QMessageBox::Yes) {
+        return;
+    }
+
+    if (!m_db.removeCable(id)) {
+        showError(m_db.lastError());
+        return;
+    }
+    clearCableForm();
+}
+
+void MainWindow::saveCableFromForm()
+{
+    const CableRecord record = cableFormRecord();
+    if (record.code.trimmed().isEmpty()) {
+        showError(QStringLiteral("电缆编号不能为空。"));
+        return;
+    }
+
+    if (!m_db.saveCable(record)) {
+        showError(m_db.lastError());
+        return;
+    }
+    clearCableForm();
+}
+
+void MainWindow::clearCableForm()
+{
+    m_currentCableId = -1;
+    m_cableCodeEdit->clear();
+    m_cableEndPointEdit->clear();
+    m_cableStartPointEdit->clear();
+    m_cableUsageExpiryEdit->setDate(m_cableUsageExpiryEdit->minimumDate());
+    m_cableLedgerRemarkEdit->clear();
+    m_saveCableButton->setText(QStringLiteral("保存"));
+}
+
 void MainWindow::openCableScanBorrowDialog()
 {
     CableScanDialog dialog(&m_db, CableScanMode::Borrow, this);
     dialog.exec();
     refreshCables();
-    refreshCableBorrows();
 }
 
 void MainWindow::openCableScanReturnDialog()
@@ -787,7 +874,6 @@ void MainWindow::openCableScanReturnDialog()
     CableScanDialog dialog(&m_db, CableScanMode::Return, this);
     dialog.exec();
     refreshCables();
-    refreshCableBorrows();
 }
 
 void MainWindow::handleCableKeywordReturn()
@@ -1028,6 +1114,38 @@ void MainWindow::loadEquipmentToForm(int id)
     m_saveEquipmentButton->setText(QStringLiteral("更新"));
 }
 
+CableRecord MainWindow::cableFormRecord() const
+{
+    CableRecord record;
+    record.id = m_currentCableId;
+    record.code = m_cableCodeEdit->text();
+    record.endPoint = m_cableEndPointEdit->text();
+    record.startPoint = m_cableStartPointEdit->text();
+    record.usageExpiryDate = m_cableUsageExpiryEdit->date() == m_cableUsageExpiryEdit->minimumDate()
+                                 ? QDate()
+                                 : m_cableUsageExpiryEdit->date();
+    record.remark = m_cableLedgerRemarkEdit->toPlainText();
+    return record;
+}
+
+void MainWindow::loadCableToForm(int id)
+{
+    const CableRecord record = m_db.cable(id);
+    if (record.id <= 0) {
+        return;
+    }
+
+    m_currentCableId = record.id;
+    m_cableCodeEdit->setText(record.code);
+    m_cableEndPointEdit->setText(record.endPoint);
+    m_cableStartPointEdit->setText(record.startPoint);
+    m_cableUsageExpiryEdit->setDate(record.usageExpiryDate.isValid()
+                                        ? record.usageExpiryDate
+                                        : m_cableUsageExpiryEdit->minimumDate());
+    m_cableLedgerRemarkEdit->setPlainText(record.remark);
+    m_saveCableButton->setText(QStringLiteral("更新"));
+}
+
 QLabel *MainWindow::createMetricLabel(const QString &title)
 {
     auto *label = new QLabel;
@@ -1078,7 +1196,7 @@ void MainWindow::addCableToCache(const CableRecord &record)
     }
 
     auto *item = new QListWidgetItem(QStringLiteral("%1    %2 -> %3    [%4]")
-                                         .arg(record.code, record.startPoint, record.endPoint, record.status),
+                                         .arg(record.code, record.endPoint, record.startPoint, record.status),
                                      m_cableCacheList);
     item->setData(Qt::UserRole, record.id);
     m_cachedCableIds.insert(record.id);
@@ -1100,4 +1218,3 @@ void MainWindow::updateCableCacheTitle()
         m_cableCacheBox->setTitle(QStringLiteral("缓存栏（%1 根）").arg(m_cableCacheList->count()));
     }
 }
-

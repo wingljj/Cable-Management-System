@@ -66,6 +66,8 @@ struct CableRecord
     QString code;
     QString startPoint;
     QString endPoint;
+    QDate usageExpiryDate;
+    QString remark;
     QString status;
 };
 
@@ -118,10 +120,14 @@ public:
     QList<QVariantMap> overdueBorrows() const;
 
     bool importCables(const QList<CableImportRow> &rows, CableImportSummary *summary);
+    bool saveCable(const CableRecord &record);
+    bool removeCable(int id);
     QSqlQueryModel *createCableModel(const QString &keyword, const QString &status, QObject *parent) const;
     QSqlQueryModel *createCableBorrowModel(const QString &keyword, const QString &status, QObject *parent) const;
+    QSqlQueryModel *createOverdueCableBorrowModel(QObject *parent) const;
     QStringList cableStatuses() const;
     QStringList cableBorrowStatuses() const;
+    int overdueCableBorrowCount() const;
     CableRecord cable(int id) const;
     CableRecord cableByCode(const QString &code) const;
     int cableIdByCode(const QString &code) const;
@@ -134,6 +140,11 @@ signals:
 
 private:
     bool ensureSchema();
+    bool ensureColumn(const QString &table, const QString &column, const QString &definition);
+    bool tableHasColumn(const QString &table, const QString &column) const;
+    bool migrationApplied(const QString &name) const;
+    bool markMigrationApplied(const QString &name);
+    bool runCableEndpointSwapMigration();
     bool seedIfEmpty();
     bool execSql(const QString &sql);
     void setLastError(const QString &message) const;
