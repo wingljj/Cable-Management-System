@@ -7,6 +7,7 @@
 
 #include <QDialog>
 #include <QFont>
+#include <QFontMetrics>
 #include <QPainter>
 #include <QPageLayout>
 #include <QPrinter>
@@ -49,20 +50,31 @@ QImage renderOnePreview(const QString &code, const QString &startPoint, const QS
     }
 
     painter.setPen(Qt::black);
-    const QRect textArea(qrRect.right() + 30, margin, size.width() - qrRect.right() - margin - 30, size.height() - margin * 2);
+    const QRect textArea(qrRect.right() + 30, qrRect.top(), size.width() - qrRect.right() - margin - 30, qrSide);
+    const int lineHeight = qMax(1, textArea.height() / 3);
 
     QFont codeFont(QStringLiteral("Microsoft YaHei UI"));
-    codeFont.setPointSize(qMax(34, size.height() / 10));
+    codeFont.setPixelSize(qMax(20, lineHeight * 7 / 10));
     codeFont.setBold(true);
     painter.setFont(codeFont);
-    painter.drawText(textArea, Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, code);
+    QFontMetrics codeMetrics(codeFont);
+    painter.drawText(QRect(textArea.left(), textArea.top(), textArea.width(), lineHeight),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     codeMetrics.elidedText(code, Qt::ElideRight, textArea.width()));
 
     QFont bodyFont(QStringLiteral("Microsoft YaHei UI"));
-    bodyFont.setPointSize(qMax(26, size.height() / 13));
+    bodyFont.setPixelSize(qMax(18, lineHeight * 3 / 5));
     bodyFont.setBold(true);
     painter.setFont(bodyFont);
-    painter.drawText(textArea.adjusted(0, qMax(78, size.height() / 6), 0, 0), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap,
-                     QStringLiteral("终端：%1\n始端：%2").arg(endPoint, startPoint));
+    QFontMetrics bodyMetrics(bodyFont);
+    const QString endText = QStringLiteral("终端：%1").arg(endPoint);
+    const QString startText = QStringLiteral("始端：%1").arg(startPoint);
+    painter.drawText(QRect(textArea.left(), textArea.top() + lineHeight, textArea.width(), lineHeight),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     bodyMetrics.elidedText(endText, Qt::ElideRight, textArea.width()));
+    painter.drawText(QRect(textArea.left(), textArea.top() + lineHeight * 2, textArea.width(), lineHeight),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     bodyMetrics.elidedText(startText, Qt::ElideRight, textArea.width()));
 
     return image;
 }
