@@ -31,8 +31,8 @@ QImage renderOnePreview(const QString &code, const QString &startPoint, const QS
     QPainter painter(&image);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    const int margin = 24;
-    const int qrSide = qMin(size.height() - margin * 2, size.width() / 3 - margin);
+    const int margin = 22;
+    const int qrSide = qMin(size.height() - margin * 2, size.width() / 4);
     const QRect qrRect(margin, margin, qrSide, qrSide);
     const int moduleCount = qr.getSize();
     const double scale = static_cast<double>(qrRect.width()) / static_cast<double>(moduleCount);
@@ -49,19 +49,19 @@ QImage renderOnePreview(const QString &code, const QString &startPoint, const QS
     }
 
     painter.setPen(Qt::black);
-    const QRect textArea(qrRect.right() + 28, margin, size.width() - qrRect.right() - margin - 28, size.height() - margin * 2);
+    const QRect textArea(qrRect.right() + 30, margin, size.width() - qrRect.right() - margin - 30, size.height() - margin * 2);
 
     QFont codeFont(QStringLiteral("Microsoft YaHei UI"));
-    codeFont.setPointSize(30);
+    codeFont.setPointSize(qMax(34, size.height() / 10));
     codeFont.setBold(true);
     painter.setFont(codeFont);
-    painter.drawText(textArea, Qt::AlignTop | Qt::AlignLeft, code);
+    painter.drawText(textArea, Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, code);
 
     QFont bodyFont(QStringLiteral("Microsoft YaHei UI"));
-    bodyFont.setPointSize(22);
+    bodyFont.setPointSize(qMax(26, size.height() / 13));
     bodyFont.setBold(true);
     painter.setFont(bodyFont);
-    painter.drawText(textArea.adjusted(0, 72, 0, 0), Qt::AlignTop | Qt::AlignLeft,
+    painter.drawText(textArea.adjusted(0, qMax(78, size.height() / 6), 0, 0), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap,
                      QStringLiteral("终端：%1\n始端：%2").arg(endPoint, startPoint));
 
     return image;

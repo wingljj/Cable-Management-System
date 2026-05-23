@@ -121,6 +121,7 @@ public:
 
     bool importCables(const QList<CableImportRow> &rows, CableImportSummary *summary);
     bool saveCable(const CableRecord &record);
+    bool updateCableUsageExpiry(const QList<int> &cableIds, const QDate &usageExpiryDate);
     bool removeCable(int id);
     QSqlQueryModel *createCableModel(const QString &keyword, const QString &status, QObject *parent) const;
     QSqlQueryModel *createCableBorrowModel(const QString &keyword, const QString &status, QObject *parent) const;

@@ -58,12 +58,14 @@ private slots:
     void editSelectedCable();
     void deleteSelectedCable();
     void saveCableFromForm();
+    void batchUpdateCableUsageExpiry();
     void clearCableForm();
     void openCableScanBorrowDialog();
     void openCableScanReturnDialog();
     void handleCableKeywordReturn();
     void addSelectedCableToCache();
     void printSelectedCableLabels();
+    void printVisibleCableLabels();
     void removeSelectedCableFromCache();
     void clearCableCache();
     void borrowCachedCables();
@@ -93,8 +95,11 @@ private:
     void rebuildBars(QFormLayout *layout, const QList<QPair<QString, int>> &rows, int total);
     void addCableToCache(const CableRecord &record);
     QList<CableRecord> selectedCableRecords(QTableView *table) const;
+    QList<CableRecord> visibleCableRecords() const;
     QList<int> cachedCableIds() const;
     void updateCableCacheTitle();
+    QDate parseCableUsageExpiryInput(const QString &text, QString *errorMessage = nullptr) const;
+    QString cableUsageExpiryText(const QDate &date) const;
 
     DatabaseManager m_db;
     QTabWidget *m_tabs = nullptr;
@@ -148,7 +153,7 @@ private:
     QLineEdit *m_cableCodeEdit = nullptr;
     QLineEdit *m_cableStartPointEdit = nullptr;
     QLineEdit *m_cableEndPointEdit = nullptr;
-    QDateEdit *m_cableUsageExpiryEdit = nullptr;
+    QLineEdit *m_cableUsageExpiryEdit = nullptr;
     QPlainTextEdit *m_cableLedgerRemarkEdit = nullptr;
     QPushButton *m_saveCableButton = nullptr;
     int m_currentCableId = -1;

@@ -311,6 +311,9 @@ void CableModuleTests::savesAndDeletesCableLedgerRecords()
     QCOMPARE(saved.startPoint, QStringLiteral("S2"));
     QCOMPARE(saved.endPoint, QStringLiteral("E2"));
     QCOMPARE(saved.remark, QStringLiteral("updated"));
+    QVERIFY2(db.updateCableUsageExpiry({saved.id}, QDate(2030, 12, 31)), qPrintable(db.lastError()));
+    saved = db.cableByCode(QStringLiteral("DL-EDIT"));
+    QCOMPARE(saved.usageExpiryDate, QDate(2030, 12, 31));
 
     CableBorrowRecord borrow;
     borrow.borrower = QStringLiteral("张三");

@@ -699,6 +699,39 @@ bool DatabaseManager::saveCable(const CableRecord &record)
     return true;
 }
 
+bool DatabaseManager::updateCableUsageExpiry(const QList<int> &cableIds, const QDate &usageExpiryDate)
+{
+    if (cableIds.isEmpty()) {
+        setLastError(QStringLiteral("请先选择要修改使用期限的电缆。"));
+        return false;
+    }
+
+    if (!m_db.transaction()) {
+        setLastError(QStringLiteral("开启使用期限批量修改事务失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("UPDATE cables SET usage_expiry_date=:usage_expiry_date WHERE id=:id"));
+    for (int cableId : cableIds) {
+        bindDate(query, QStringLiteral(":usage_expiry_date"), usageExpiryDate);
+        query.bindValue(QStringLiteral(":id"), cableId);
+        if (!query.exec()) {
+            m_db.rollback();
+            setLastError(QStringLiteral("批量修改使用期限失败：%1").arg(query.lastError().text()));
+            return false;
+        }
+    }
+
+    if (!m_db.commit()) {
+        setLastError(QStringLiteral("提交使用期限批量修改失败：%1").arg(m_db.lastError().text()));
+        return false;
+    }
+
+    emit dataChanged();
+    return true;
+}
+
 bool DatabaseManager::removeCable(int id)
 {
     QSqlQuery check(m_db);

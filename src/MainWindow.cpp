@@ -14,6 +14,7 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -327,7 +328,8 @@ QWidget *MainWindow::buildCableTab()
     auto *resetButton = new QPushButton(QStringLiteral("重置"), ledgerBox);
     auto *importButton = new QPushButton(QStringLiteral("导入 Excel/CSV"), ledgerBox);
     auto *cacheSelectedButton = new QPushButton(QStringLiteral("加入缓存"), ledgerBox);
-    auto *printSelectedButton = new QPushButton(QStringLiteral("打印标签"), ledgerBox);
+    auto *printSelectedButton = new QPushButton(QStringLiteral("批量打印选中"), ledgerBox);
+    auto *printVisibleButton = new QPushButton(QStringLiteral("打印当前结果"), ledgerBox);
     auto *scanBorrowButton = new QPushButton(QStringLiteral("扫码借出"), ledgerBox);
     auto *scanReturnButton = new QPushButton(QStringLiteral("扫码归还"), ledgerBox);
 
@@ -342,8 +344,9 @@ QWidget *MainWindow::buildCableTab()
     filterLayout->addWidget(importButton, 0, 8);
     filterLayout->addWidget(cacheSelectedButton, 0, 9);
     filterLayout->addWidget(printSelectedButton, 0, 10);
-    filterLayout->addWidget(scanBorrowButton, 0, 11);
-    filterLayout->addWidget(scanReturnButton, 0, 12);
+    filterLayout->addWidget(printVisibleButton, 0, 11);
+    filterLayout->addWidget(scanBorrowButton, 0, 12);
+    filterLayout->addWidget(scanReturnButton, 0, 13);
     filterLayout->setColumnStretch(1, 2);
 
     m_cableTable = new QTableView(ledgerBox);
@@ -360,12 +363,8 @@ QWidget *MainWindow::buildCableTab()
     m_cableCodeEdit = new QLineEdit(formBox);
     m_cableEndPointEdit = new QLineEdit(formBox);
     m_cableStartPointEdit = new QLineEdit(formBox);
-    m_cableUsageExpiryEdit = new QDateEdit(formBox);
-    m_cableUsageExpiryEdit->setCalendarPopup(true);
-    m_cableUsageExpiryEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
-    m_cableUsageExpiryEdit->setMinimumDate(QDate(1900, 1, 1));
-    m_cableUsageExpiryEdit->setSpecialValueText(QStringLiteral("无"));
-    m_cableUsageExpiryEdit->setDate(m_cableUsageExpiryEdit->minimumDate());
+    m_cableUsageExpiryEdit = new QLineEdit(formBox);
+    m_cableUsageExpiryEdit->setPlaceholderText(QStringLiteral("如：2027 或 2027-12-31"));
     m_cableLedgerRemarkEdit = new QPlainTextEdit(formBox);
     m_cableLedgerRemarkEdit->setFixedHeight(72);
     ledgerForm->addRow(QStringLiteral("编号"), m_cableCodeEdit);
@@ -378,9 +377,11 @@ QWidget *MainWindow::buildCableTab()
     auto *newCableButton = new QPushButton(QStringLiteral("新增"), formBox);
     m_saveCableButton = new QPushButton(QStringLiteral("保存"), formBox);
     auto *deleteCableButton = new QPushButton(QStringLiteral("删除"), formBox);
+    auto *batchExpiryButton = new QPushButton(QStringLiteral("批量改期限"), formBox);
     ledgerButtons->addWidget(newCableButton);
     ledgerButtons->addWidget(m_saveCableButton);
     ledgerButtons->addWidget(deleteCableButton);
+    ledgerButtons->addWidget(batchExpiryButton);
     ledgerForm->addRow(ledgerButtons);
     right->addWidget(formBox);
 
@@ -443,11 +444,13 @@ QWidget *MainWindow::buildCableTab()
     connect(importButton, &QPushButton::clicked, this, &MainWindow::importCables);
     connect(cacheSelectedButton, &QPushButton::clicked, this, &MainWindow::addSelectedCableToCache);
     connect(printSelectedButton, &QPushButton::clicked, this, &MainWindow::printSelectedCableLabels);
+    connect(printVisibleButton, &QPushButton::clicked, this, &MainWindow::printVisibleCableLabels);
     connect(scanBorrowButton, &QPushButton::clicked, this, &MainWindow::openCableScanBorrowDialog);
     connect(scanReturnButton, &QPushButton::clicked, this, &MainWindow::openCableScanReturnDialog);
     connect(newCableButton, &QPushButton::clicked, this, &MainWindow::newCable);
     connect(m_saveCableButton, &QPushButton::clicked, this, &MainWindow::saveCableFromForm);
     connect(deleteCableButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedCable);
+    connect(batchExpiryButton, &QPushButton::clicked, this, &MainWindow::batchUpdateCableUsageExpiry);
     connect(removeCacheButton, &QPushButton::clicked, this, &MainWindow::removeSelectedCableFromCache);
     connect(clearCacheButton, &QPushButton::clicked, this, &MainWindow::clearCableCache);
     connect(borrowButton, &QPushButton::clicked, this, &MainWindow::borrowCachedCables);
@@ -838,13 +841,60 @@ void MainWindow::deleteSelectedCable()
 
 void MainWindow::saveCableFromForm()
 {
+    QString expiryError;
+    const QDate usageExpiryDate = parseCableUsageExpiryInput(m_cableUsageExpiryEdit->text(), &expiryError);
+    if (!expiryError.isEmpty()) {
+        showError(expiryError);
+        return;
+    }
+
     const CableRecord record = cableFormRecord();
+    CableRecord savedRecord = record;
+    savedRecord.usageExpiryDate = usageExpiryDate;
     if (record.code.trimmed().isEmpty()) {
         showError(QStringLiteral("电缆编号不能为空。"));
         return;
     }
 
-    if (!m_db.saveCable(record)) {
+    if (!m_db.saveCable(savedRecord)) {
+        showError(m_db.lastError());
+        return;
+    }
+    clearCableForm();
+}
+
+void MainWindow::batchUpdateCableUsageExpiry()
+{
+    const QList<CableRecord> records = selectedCableRecords(m_cableTable);
+    if (records.isEmpty()) {
+        showError(QStringLiteral("请先选择要批量修改使用期限的电缆。"));
+        return;
+    }
+
+    bool ok = false;
+    const QString text = QInputDialog::getText(this,
+                                               QStringLiteral("批量修改使用期限"),
+                                               QStringLiteral("使用期限（如：2027 或 2027-12-31；留空表示清空）："),
+                                               QLineEdit::Normal,
+                                               m_cableUsageExpiryEdit->text().trimmed(),
+                                               &ok);
+    if (!ok) {
+        return;
+    }
+
+    QString error;
+    const QDate usageExpiryDate = parseCableUsageExpiryInput(text, &error);
+    if (!error.isEmpty()) {
+        showError(error);
+        return;
+    }
+
+    QList<int> ids;
+    for (const CableRecord &record : records) {
+        ids.append(record.id);
+    }
+
+    if (!m_db.updateCableUsageExpiry(ids, usageExpiryDate)) {
         showError(m_db.lastError());
         return;
     }
@@ -857,7 +907,7 @@ void MainWindow::clearCableForm()
     m_cableCodeEdit->clear();
     m_cableEndPointEdit->clear();
     m_cableStartPointEdit->clear();
-    m_cableUsageExpiryEdit->setDate(m_cableUsageExpiryEdit->minimumDate());
+    m_cableUsageExpiryEdit->clear();
     m_cableLedgerRemarkEdit->clear();
     m_saveCableButton->setText(QStringLiteral("保存"));
 }
@@ -911,6 +961,17 @@ void MainWindow::printSelectedCableLabels()
     }
 }
 
+void MainWindow::printVisibleCableLabels()
+{
+    const QList<CableRecord> records = visibleCableRecords();
+    QString error;
+    if (!CableLabelPrinter::printLabels(records, this, &error)) {
+        if (!error.isEmpty()) {
+            showError(error);
+        }
+    }
+}
+
 void MainWindow::addSelectedCableToCache()
 {
     if (!m_cableTable || !m_cableTable->model() || !m_cableTable->selectionModel()) {
@@ -942,6 +1003,22 @@ QList<CableRecord> MainWindow::selectedCableRecords(QTableView *table) const
     for (const QModelIndex &rowIndex : rows) {
         const QModelIndex modelIndex = table->model()->index(rowIndex.row(), 0);
         const int id = modelIndex.data().toInt();
+        if (id > 0) {
+            records.append(m_db.cable(id));
+        }
+    }
+    return records;
+}
+
+QList<CableRecord> MainWindow::visibleCableRecords() const
+{
+    QList<CableRecord> records;
+    if (!m_cableTable || !m_cableTable->model()) {
+        return records;
+    }
+
+    for (int row = 0; row < m_cableTable->model()->rowCount(); ++row) {
+        const int id = m_cableTable->model()->index(row, 0).data().toInt();
         if (id > 0) {
             records.append(m_db.cable(id));
         }
@@ -1121,9 +1198,7 @@ CableRecord MainWindow::cableFormRecord() const
     record.code = m_cableCodeEdit->text();
     record.endPoint = m_cableEndPointEdit->text();
     record.startPoint = m_cableStartPointEdit->text();
-    record.usageExpiryDate = m_cableUsageExpiryEdit->date() == m_cableUsageExpiryEdit->minimumDate()
-                                 ? QDate()
-                                 : m_cableUsageExpiryEdit->date();
+    record.usageExpiryDate = parseCableUsageExpiryInput(m_cableUsageExpiryEdit->text());
     record.remark = m_cableLedgerRemarkEdit->toPlainText();
     return record;
 }
@@ -1139,11 +1214,51 @@ void MainWindow::loadCableToForm(int id)
     m_cableCodeEdit->setText(record.code);
     m_cableEndPointEdit->setText(record.endPoint);
     m_cableStartPointEdit->setText(record.startPoint);
-    m_cableUsageExpiryEdit->setDate(record.usageExpiryDate.isValid()
-                                        ? record.usageExpiryDate
-                                        : m_cableUsageExpiryEdit->minimumDate());
+    m_cableUsageExpiryEdit->setText(cableUsageExpiryText(record.usageExpiryDate));
     m_cableLedgerRemarkEdit->setPlainText(record.remark);
     m_saveCableButton->setText(QStringLiteral("更新"));
+}
+
+QDate MainWindow::parseCableUsageExpiryInput(const QString &text, QString *errorMessage) const
+{
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return QDate();
+    }
+
+    bool yearOk = false;
+    const int year = trimmed.toInt(&yearOk);
+    if (yearOk && trimmed.size() == 4 && year >= 1900 && year <= 9999) {
+        return QDate(year, 12, 31);
+    }
+
+    const QStringList formats = {
+        QStringLiteral("yyyy-MM-dd"),
+        QStringLiteral("yyyy/M/d"),
+        QStringLiteral("yyyy/MM/dd"),
+        QStringLiteral("yyyy.M.d"),
+        QStringLiteral("yyyy.MM.dd")
+    };
+    for (const QString &format : formats) {
+        const QDate date = QDate::fromString(trimmed, format);
+        if (date.isValid()) {
+            return date;
+        }
+    }
+
+    if (errorMessage) {
+        *errorMessage = QStringLiteral("使用期限格式不正确，请填写年份（如 2027）或日期（如 2027-12-31）。");
+    }
+    return QDate();
+}
+
+QString MainWindow::cableUsageExpiryText(const QDate &date) const
+{
+    return date.isValid() ? date.toString(Qt::ISODate) : QString();
 }
 
 QLabel *MainWindow::createMetricLabel(const QString &title)
